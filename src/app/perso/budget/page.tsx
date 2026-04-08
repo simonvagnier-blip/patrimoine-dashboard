@@ -20,7 +20,7 @@ interface BudgetEntry {
 
 const DEFAULT_CATEGORIES = {
   income: ["Salaire", "Freelance", "Investissements", "Autre"],
-  expense: ["Loyer", "Courses", "Transport", "Loisirs", "Abonnements", "Santé", "Restaurants", "Shopping", "Autre"],
+  expense: ["Loyer", "Courses", "Transport", "Loisirs", "Abonnements", "Santé", "Restaurants", "Shopping", "Investissement PEA", "Investissement PER", "Investissement AV", "Autre"],
 };
 
 // R5: Default budget limits per category (editable later)

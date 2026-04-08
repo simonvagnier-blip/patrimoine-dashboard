@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     priority: body.priority || "medium",
     project_id: body.project_id || null,
     due_date: body.due_date || null,
+    recurrence: body.recurrence || null,
     position: body.position || 0,
     created_at: now,
     updated_at: now,
@@ -47,8 +48,33 @@ export async function PUT(request: NextRequest) {
   if (body.due_date !== undefined) updates.due_date = body.due_date;
   if (body.position !== undefined) updates.position = body.position;
   if (body.project_id !== undefined) updates.project_id = body.project_id;
+  if (body.recurrence !== undefined) updates.recurrence = body.recurrence;
 
   const result = await db.update(schema.tasks).set(updates).where(eq(schema.tasks.id, body.id)).returning().get();
+
+  // Auto-create next occurrence when a recurring task is marked done
+  if (body.status === "done" && result.recurrence) {
+    const recurrenceDays: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
+    const days = recurrenceDays[result.recurrence];
+    if (days) {
+      const baseDate = result.due_date ? new Date(result.due_date + "T00:00:00") : new Date();
+      const nextDue = new Date(baseDate.getTime() + days * 86400000).toISOString().split("T")[0];
+      await db.insert(schema.tasks).values({
+        space: result.space,
+        title: result.title,
+        description: result.description || null,
+        status: "todo",
+        priority: result.priority,
+        project_id: result.project_id,
+        due_date: nextDue,
+        recurrence: result.recurrence,
+        position: result.position,
+        created_at: now,
+        updated_at: now,
+      }).run();
+    }
+  }
+
   return NextResponse.json(result);
 }
 

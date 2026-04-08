@@ -68,6 +68,7 @@ export const tasks = sqliteTable("tasks", {
   project_id: integer("project_id"),
   due_date: text("due_date"),
   completed_at: text("completed_at"),
+  recurrence: text("recurrence"), // null | 'daily' | 'weekly' | 'monthly'
   position: integer("position").notNull().default(0),
   created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
   updated_at: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),

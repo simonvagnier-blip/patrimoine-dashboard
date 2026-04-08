@@ -15,6 +15,7 @@ interface Task {
   status: string;
   priority: string;
   due_date: string | null;
+  recurrence: string | null;
   created_at: string;
 }
 
@@ -35,6 +36,13 @@ const PRIORITIES = [
   { key: "medium", label: "Moyenne", color: "#3b82f6" },
   { key: "high", label: "Haute", color: "#f59e0b" },
   { key: "urgent", label: "Urgent", color: "#ef4444" },
+];
+
+const RECURRENCES = [
+  { key: "", label: "\u2014" },
+  { key: "daily", label: "Quotidien" },
+  { key: "weekly", label: "Hebdo" },
+  { key: "monthly", label: "Mensuel" },
 ];
 
 function todayStr(): string {
@@ -68,6 +76,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [newRecurrence, setNewRecurrence] = useState("");
   const [view, setView] = useState<"list" | "kanban">("kanban");
   const [filter, setFilter] = useState<string | null>(null);
   const [todayFilter, setTodayFilter] = useState(false);
@@ -86,10 +95,11 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ space, title: newTitle.trim(), due_date: newDueDate || null }),
+      body: JSON.stringify({ space, title: newTitle.trim(), due_date: newDueDate || null, recurrence: newRecurrence || null }),
     });
     setNewTitle("");
     setNewDueDate("");
+    setNewRecurrence("");
     fetchTasks();
   }
 
@@ -178,6 +188,16 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
             onChange={(e) => setNewDueDate(e.target.value)}
             className={`${cardBg} border-gray-700 text-white w-40 text-sm`}
           />
+          <select
+            value={newRecurrence}
+            onChange={(e) => setNewRecurrence(e.target.value)}
+            className={`${cardBg} border border-gray-700 text-white rounded-md px-2 py-2 text-sm w-28`}
+            title="R&eacute;currence"
+          >
+            {RECURRENCES.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}</option>
+            ))}
+          </select>
           <Button onClick={addTask} style={{ backgroundColor: config.color }} className="text-white hover:opacity-90">
             Ajouter
           </Button>
@@ -213,6 +233,11 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                                   <span className="text-[9px] bg-red-500/20 text-red-400 px-1 rounded">En retard</span>
                                 )}
                               </div>
+                            )}
+                            {task.recurrence && (
+                              <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+                                &#8634; {RECURRENCES.find((r) => r.key === task.recurrence)?.label}
+                              </span>
                             )}
                             <div className="flex items-center justify-between">
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
@@ -288,6 +313,11 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
                       {pri?.label}
                     </Badge>
+                    {task.recurrence && (
+                      <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
+                        &#8634; {RECURRENCES.find((r) => r.key === task.recurrence)?.label}
+                      </span>
+                    )}
                     {task.due_date && (
                       <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
                         {task.due_date}

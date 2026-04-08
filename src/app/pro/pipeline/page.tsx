@@ -43,6 +43,7 @@ export default function PipelinePage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ title: "", value: "", stage: "lead", probability: "10", expected_close: "", notes: "", contact_id: "" });
+  const [toast, setToast] = useState<string | null>(null);
 
   const fetchDeals = useCallback(async () => {
     const res = await fetch("/api/deals");
@@ -81,8 +82,51 @@ export default function PipelinePage() {
     fetchDeals();
   }
 
+  function dueDate(daysFromNow: number): string {
+    return new Date(Date.now() + daysFromNow * 86400000).toISOString().split("T")[0];
+  }
+
+  async function createWorkflowTasks(dealTitle: string, newStage: string) {
+    const taskDefs: { title: string; due_date: string; priority: string }[] = [];
+
+    if (newStage === "proposal") {
+      taskDefs.push(
+        { title: `Envoyer proposition \u2014 ${dealTitle}`, due_date: dueDate(1), priority: "high" },
+        { title: `Relancer \u2014 ${dealTitle}`, due_date: dueDate(3), priority: "medium" },
+      );
+    } else if (newStage === "negotiation") {
+      taskDefs.push(
+        { title: `Pr\u00e9parer n\u00e9gociation \u2014 ${dealTitle}`, due_date: dueDate(1), priority: "high" },
+        { title: `Planifier d\u00e9mo \u2014 ${dealTitle}`, due_date: dueDate(5), priority: "medium" },
+      );
+    } else if (newStage === "won") {
+      taskDefs.push(
+        { title: `Onboarding client \u2014 ${dealTitle}`, due_date: dueDate(7), priority: "medium" },
+      );
+    }
+
+    if (taskDefs.length === 0) return;
+
+    await Promise.all(
+      taskDefs.map((t) =>
+        fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ space: "pro", ...t }),
+        })
+      )
+    );
+
+    setToast(`${taskDefs.length} t\u00e2che${taskDefs.length > 1 ? "s" : ""} cr\u00e9\u00e9e${taskDefs.length > 1 ? "s" : ""} automatiquement`);
+    setTimeout(() => setToast(null), 3000);
+  }
+
   async function moveStage(id: number, stage: string) {
+    const deal = deals.find((d) => d.id === id);
     await fetch("/api/deals", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, stage }) });
+    if (deal) {
+      await createWorkflowTasks(deal.title, stage);
+    }
     fetchDeals();
   }
 
@@ -189,6 +233,14 @@ export default function PipelinePage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Workflow toast notification */}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1a1f2e] border border-gray-700 rounded-lg px-4 py-3 shadow-lg flex items-center gap-2">
+            <span className="text-emerald-400 text-sm">&#10003;</span>
+            <span className="text-sm text-gray-300">{toast}</span>
+          </div>
+        )}
 
         {/* Add deal dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

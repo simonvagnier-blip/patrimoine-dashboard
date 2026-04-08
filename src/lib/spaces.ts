@@ -59,6 +59,7 @@ export const NAV_ITEMS: Record<Space, NavItem[]> = {
   ],
   all: [
     { href: "/", label: "Accueil", icon: "home" },
+    { href: "/review", label: "Weekly Review", icon: "chart" },
     { href: "/perso/patrimoine", label: "Patrimoine", icon: "wallet" },
     { href: "/pro/crm", label: "CRM", icon: "users" },
     { href: "/perso/budget", label: "Budget", icon: "banknote" },

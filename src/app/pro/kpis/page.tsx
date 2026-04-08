@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 
 interface KPI {
   id: number;
@@ -46,6 +47,7 @@ function dealsInPeriod(deals: Deal[], period: string): Deal[] {
 
 export default function KPIsPage() {
   const [kpis, setKpis] = useState<KPI[]>([]);
+  const [allKpis, setAllKpis] = useState<KPI[]>([]); // R17: all periods
   const [deals, setDeals] = useState<Deal[]>([]);
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [editing, setEditing] = useState<string | null>(null);
@@ -57,12 +59,32 @@ export default function KPIsPage() {
     if (res.ok) setKpis(await res.json());
   }, [period]);
 
+  // R17: Fetch all KPIs for trend
+  const fetchAllKpis = useCallback(async () => {
+    const res = await fetch("/api/kpis");
+    if (res.ok) setAllKpis(await res.json());
+  }, []);
+
   const fetchDeals = useCallback(async () => {
     const res = await fetch("/api/deals");
     if (res.ok) setDeals(await res.json());
   }, []);
 
-  useEffect(() => { fetchKpis(); fetchDeals(); }, [fetchKpis, fetchDeals]);
+  useEffect(() => { fetchKpis(); fetchDeals(); fetchAllKpis(); }, [fetchKpis, fetchDeals, fetchAllKpis]);
+
+  // R17: Build trend data per metric (last 6 months)
+  function getTrend(metric: string): Array<{ period: string; value: number }> {
+    const months: string[] = [];
+    const d = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const md = new Date(d.getFullYear(), d.getMonth() - i, 1);
+      months.push(md.toISOString().slice(0, 7));
+    }
+    return months.map((m) => {
+      const kpi = allKpis.find((k) => k.metric === metric && k.period === m);
+      return { period: m.slice(5), value: kpi?.value ?? 0 };
+    });
+  }
 
   // Calculate auto KPIs from deals
   const periodDeals = dealsInPeriod(deals, period);
@@ -195,6 +217,26 @@ export default function KPIsPage() {
                           <p className="text-[10px] text-gray-500 text-right">{pct.toFixed(0)}%</p>
                         </div>
                       )}
+                      {/* R17: Trend sparkline */}
+                      {!isAuto && (() => {
+                        const trend = getTrend(def.metric);
+                        const hasData = trend.some((t) => t.value > 0);
+                        if (!hasData) return null;
+                        return (
+                          <div className="h-12 mt-2">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={trend}>
+                                <Line type="monotone" dataKey="value" stroke={def.color} strokeWidth={1.5} dot={false} />
+                                <Tooltip
+                                  contentStyle={{ backgroundColor: "#161b22", border: "1px solid #374151", borderRadius: "6px", fontSize: "10px" }}
+                                  labelStyle={{ color: "#9ca3af" }}
+                                  formatter={(v) => [formatValue(Number(v), def.unit), def.label]}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </CardContent>
