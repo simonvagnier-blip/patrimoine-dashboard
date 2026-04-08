@@ -218,6 +218,11 @@ export default function DashboardClient({ envelopes, positions, basePath = "" }:
             </div>
             <div className="flex flex-col items-end gap-1">
               <div className="flex gap-2">
+                <Link href={`${basePath}/projections`}>
+                  <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white">
+                    Projections
+                  </Button>
+                </Link>
                 <ExportPDF grandTotal={grandTotal} envelopeData={envelopeData} positions={enrichedPositions} />
                 <Button
                   variant="outline"
