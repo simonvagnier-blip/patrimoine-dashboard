@@ -51,3 +51,4 @@ export async function getCalendarEvents(
     htmlLink: event.htmlLink || null,
   }));
 }
+// env check
