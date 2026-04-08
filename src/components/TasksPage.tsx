@@ -82,6 +82,8 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [todayFilter, setTodayFilter] = useState(false);
   const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
+  const [editingDescId, setEditingDescId] = useState<number | null>(null);
+  const [editingDescText, setEditingDescText] = useState("");
   const config = SPACES[space];
 
   const fetchTasks = useCallback(async () => {
@@ -135,6 +137,22 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     setPendingDeletes((prev) => prev.filter((p) => p.id !== id));
     // Restore the task
     setTasks((prev) => [...prev, pd.task]);
+  }
+
+  function startEditDesc(task: Task) {
+    setEditingDescId(task.id);
+    setEditingDescText(task.description || "");
+  }
+
+  async function saveDescription(id: number) {
+    await fetch("/api/tasks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, description: editingDescText || null }),
+    });
+    setEditingDescId(null);
+    setEditingDescText("");
+    fetchTasks();
   }
 
   async function updatePriority(id: number, priority: string) {
@@ -235,7 +253,30 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                         <Card key={task.id} className={`${cardBg} border-gray-800`}>
                           <CardContent className="p-3 space-y-2">
                             <p className="text-sm text-white">{task.title}</p>
-                            {task.description && <p className="text-xs text-gray-500">{task.description}</p>}
+                            {editingDescId === task.id ? (
+                              <div className="space-y-1">
+                                <textarea
+                                  value={editingDescText}
+                                  onChange={(e) => setEditingDescText(e.target.value)}
+                                  placeholder="Notes, liens, r&eacute;f&eacute;rences..."
+                                  className={`w-full ${cardBg} border border-gray-700 rounded text-xs text-gray-300 p-2 min-h-[60px] resize-y focus:outline-none focus:border-gray-500`}
+                                  autoFocus
+                                  onKeyDown={(e) => { if (e.key === "Escape") setEditingDescId(null); }}
+                                />
+                                <div className="flex gap-1 justify-end">
+                                  <button onClick={() => setEditingDescId(null)} className="text-[10px] text-gray-500 hover:text-gray-300 px-2 py-0.5">Annuler</button>
+                                  <button onClick={() => saveDescription(task.id)} className="text-[10px] text-emerald-400 hover:text-emerald-300 px-2 py-0.5">Enregistrer</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div onClick={() => startEditDesc(task)} className="cursor-pointer group/desc">
+                                {task.description ? (
+                                  <p className="text-xs text-gray-500 group-hover/desc:text-gray-400 whitespace-pre-wrap">{task.description}</p>
+                                ) : (
+                                  <p className="text-[10px] text-gray-700 group-hover/desc:text-gray-500">+ Ajouter une note</p>
+                                )}
+                              </div>
+                            )}
                             {task.due_date && (
                               <div className="flex items-center gap-1">
                                 <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
@@ -317,44 +358,72 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                 const sta = STATUSES.find((s) => s.key === task.status);
                 const overdue = task.status !== "done" && isOverdue(task.due_date);
                 return (
-                  <div key={task.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-[#161b22] group">
-                    <button
-                      onClick={() => updateStatus(task.id, task.status === "done" ? "todo" : "done")}
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        task.status === "done" ? "border-emerald-400 bg-emerald-400" : "border-gray-600 hover:border-gray-400"
-                      }`}
-                    >
-                      {task.status === "done" && <span className="text-[10px] text-white">&#10003;</span>}
-                    </button>
-                    <span className={`flex-1 text-sm ${task.status === "done" ? "line-through text-gray-500" : "text-white"}`}>
-                      {task.title}
-                    </span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
-                      {pri?.label}
-                    </Badge>
-                    {task.recurrence && (
-                      <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
-                        &#8634; {RECURRENCES.find((r) => r.key === task.recurrence)?.label}
+                  <div key={task.id} className="rounded-lg hover:bg-[#161b22] group">
+                    <div className="flex items-center gap-3 py-2 px-2">
+                      <button
+                        onClick={() => updateStatus(task.id, task.status === "done" ? "todo" : "done")}
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          task.status === "done" ? "border-emerald-400 bg-emerald-400" : "border-gray-600 hover:border-gray-400"
+                        }`}
+                      >
+                        {task.status === "done" && <span className="text-[10px] text-white">&#10003;</span>}
+                      </button>
+                      <span
+                        className={`flex-1 text-sm cursor-pointer ${task.status === "done" ? "line-through text-gray-500" : "text-white"}`}
+                        onClick={() => editingDescId === task.id ? setEditingDescId(null) : startEditDesc(task)}
+                      >
+                        {task.title}
+                        {task.description && <span className="ml-1.5 text-[10px] text-gray-600">&#9998;</span>}
                       </span>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
+                        {pri?.label}
+                      </Badge>
+                      {task.recurrence && (
+                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
+                          &#8634; {RECURRENCES.find((r) => r.key === task.recurrence)?.label}
+                        </span>
+                      )}
+                      {task.due_date && (
+                        <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
+                          {task.due_date}
+                        </span>
+                      )}
+                      {overdue && (
+                        <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">En retard</span>
+                      )}
+                      <select
+                        value={task.priority}
+                        onChange={(e) => updatePriority(task.id, e.target.value)}
+                        className="bg-transparent text-[10px] text-gray-500 border-none outline-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                      </select>
+                      <button onClick={() => requestDeleteTask(task.id)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">
+                        &#10005;
+                      </button>
+                    </div>
+                    {editingDescId === task.id && (
+                      <div className="px-10 pb-2 space-y-1">
+                        <textarea
+                          value={editingDescText}
+                          onChange={(e) => setEditingDescText(e.target.value)}
+                          placeholder="Notes, liens, r&eacute;f&eacute;rences..."
+                          className={`w-full ${cardBg} border border-gray-700 rounded text-xs text-gray-300 p-2 min-h-[60px] resize-y focus:outline-none focus:border-gray-500`}
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === "Escape") setEditingDescId(null); }}
+                        />
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => setEditingDescId(null)} className="text-[10px] text-gray-500 hover:text-gray-300 px-2 py-0.5">Annuler</button>
+                          <button onClick={() => saveDescription(task.id)} className="text-[10px] text-emerald-400 hover:text-emerald-300 px-2 py-0.5">Enregistrer</button>
+                        </div>
+                      </div>
                     )}
-                    {task.due_date && (
-                      <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
-                        {task.due_date}
-                      </span>
+                    {editingDescId !== task.id && task.description && (
+                      <p className="px-10 pb-2 text-xs text-gray-500 whitespace-pre-wrap cursor-pointer hover:text-gray-400"
+                        onClick={() => startEditDesc(task)}>
+                        {task.description}
+                      </p>
                     )}
-                    {overdue && (
-                      <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">En retard</span>
-                    )}
-                    <select
-                      value={task.priority}
-                      onChange={(e) => updatePriority(task.id, e.target.value)}
-                      className="bg-transparent text-[10px] text-gray-500 border-none outline-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-                    </select>
-                    <button onClick={() => requestDeleteTask(task.id)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">
-                      &#10005;
-                    </button>
                   </div>
                 );
               })}
