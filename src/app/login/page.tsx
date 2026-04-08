@@ -39,9 +39,9 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm bg-[#0d1117] border-gray-800">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-white">
-            Patrimoine Dashboard
+            Command Center
           </CardTitle>
-          <p className="text-sm text-gray-400 mt-1">Accès sécurisé</p>
+          <p className="text-sm text-gray-400 mt-1">Votre espace personnel & professionnel</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

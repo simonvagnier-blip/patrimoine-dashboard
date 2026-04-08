@@ -136,27 +136,26 @@ export default function HabitsPage() {
         ) : (
           <Card className="bg-[#0d1117] border-gray-800">
             <CardContent className="pt-4">
-              {/* Week header */}
-              <div className="grid gap-2" style={{ gridTemplateColumns: "1fr repeat(7, 40px) 60px" }}>
-                <div />
-                {weekDates.map((d) => (
-                  <div key={d} className={`text-center text-[10px] ${d === today ? "text-emerald-400 font-bold" : "text-gray-500"}`}>
-                    {getDayLabel(d)}
-                  </div>
-                ))}
-                <div className="text-center text-[10px] text-gray-500">Streak</div>
-              </div>
-
-              {/* Habit rows */}
-              {habits.map((habit) => {
-                const streak = getStreak(habit.id);
-                return (
-                  <div key={habit.id} className="grid gap-2 py-2 border-t border-gray-800 items-center"
-                    style={{ gridTemplateColumns: "1fr repeat(7, 40px) 60px" }}>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: habit.color }} />
-                      <span className="text-sm text-white truncate">{habit.name}</span>
+              {/* F5: Desktop week grid */}
+              <div className="hidden sm:block">
+                <div className="grid gap-2" style={{ gridTemplateColumns: "1fr repeat(7, 40px) 60px" }}>
+                  <div />
+                  {weekDates.map((d) => (
+                    <div key={d} className={`text-center text-[10px] ${d === today ? "text-emerald-400 font-bold" : "text-gray-500"}`}>
+                      {getDayLabel(d)}
                     </div>
+                  ))}
+                  <div className="text-center text-[10px] text-gray-500">Streak</div>
+                </div>
+                {habits.map((habit) => {
+                  const streak = getStreak(habit.id);
+                  return (
+                    <div key={habit.id} className="grid gap-2 py-2 border-t border-gray-800 items-center"
+                      style={{ gridTemplateColumns: "1fr repeat(7, 40px) 60px" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: habit.color }} />
+                        <span className="text-sm text-white truncate">{habit.name}</span>
+                      </div>
                     {weekDates.map((d) => {
                       const logged = isLogged(habit.id, d);
                       return (
@@ -184,6 +183,36 @@ export default function HabitsPage() {
                   </div>
                 );
               })}
+              </div>
+
+              {/* F5: Mobile view — today only with swipe hint */}
+              <div className="sm:hidden space-y-3">
+                {habits.map((habit) => {
+                  const streak = getStreak(habit.id);
+                  const todayLogged = isLogged(habit.id, today);
+                  return (
+                    <div key={habit.id} className="flex items-center gap-3 py-2 border-t border-gray-800">
+                      <button
+                        onClick={() => toggleLog(habit.id, today)}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+                          todayLogged ? "text-white text-lg" : "bg-[#161b22] text-gray-700"
+                        }`}
+                        style={todayLogged ? { backgroundColor: habit.color } : {}}
+                      >
+                        {todayLogged ? "\u2713" : ""}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm text-white">{habit.name}</span>
+                        {streak > 0 && (
+                          <span className="text-xs ml-2 font-[family-name:var(--font-jetbrains)]" style={{ color: habit.color }}>
+                            {streak}j
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
         )}

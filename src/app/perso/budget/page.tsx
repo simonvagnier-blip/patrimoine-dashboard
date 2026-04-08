@@ -23,6 +23,12 @@ const DEFAULT_CATEGORIES = {
   expense: ["Loyer", "Courses", "Transport", "Loisirs", "Abonnements", "Santé", "Restaurants", "Shopping", "Autre"],
 };
 
+// R5: Default budget limits per category (editable later)
+const BUDGET_LIMITS: Record<string, number> = {
+  "Loyer": 1200, "Courses": 400, "Transport": 150, "Loisirs": 200,
+  "Abonnements": 100, "Santé": 100, "Restaurants": 200, "Shopping": 150,
+};
+
 function formatEur(v: number): string {
   return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 }
@@ -105,24 +111,52 @@ export default function BudgetPage() {
               <p className={`text-lg font-bold font-[family-name:var(--font-jetbrains)] ${balance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {formatEur(balance)}
               </p>
+              {totalIncome > 0 && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Taux : <span className={`font-[family-name:var(--font-jetbrains)] ${balance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {((balance / totalIncome) * 100).toFixed(0)}%
+                  </span>
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Expense breakdown */}
+        {/* R5: Expense breakdown with budget limits */}
         {sortedCategories.length > 0 && (
           <Card className="bg-[#0d1117] border-gray-800">
             <CardHeader><CardTitle className="text-white text-sm">Dépenses par catégorie</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {sortedCategories.map(([cat, amount]) => (
-                <div key={cat} className="flex items-center gap-3">
-                  <span className="text-sm text-gray-300 w-28">{cat}</span>
-                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-400/60 rounded-full" style={{ width: `${(amount / totalExpenses) * 100}%` }} />
+            <CardContent className="space-y-3">
+              {sortedCategories.map(([cat, amount]) => {
+                const limit = BUDGET_LIMITS[cat];
+                const pct = limit ? (amount / limit) * 100 : (amount / totalExpenses) * 100;
+                const barColor = limit
+                  ? pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500"
+                  : "bg-red-400/60";
+                return (
+                  <div key={cat} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-300">{cat}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-[family-name:var(--font-jetbrains)] text-gray-400">{formatEur(amount)}</span>
+                        {limit && (
+                          <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-400" : "text-gray-500"}`}>
+                            / {formatEur(limit)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                    {limit && pct >= 80 && (
+                      <p className={`text-[10px] ${pct >= 100 ? "text-red-400" : "text-amber-400"}`}>
+                        {pct >= 100 ? `Dépassé de ${formatEur(amount - limit)}` : `${(100 - pct).toFixed(0)}% restant`}
+                      </p>
+                    )}
                   </div>
-                  <span className="text-xs text-gray-400 font-[family-name:var(--font-jetbrains)] w-20 text-right">{formatEur(amount)}</span>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         )}

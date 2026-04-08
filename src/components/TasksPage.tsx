@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,10 +18,16 @@ interface Task {
   created_at: string;
 }
 
+interface PendingDelete {
+  id: number;
+  task: Task;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 const STATUSES = [
-  { key: "todo", label: "À faire", color: "#6b7280" },
+  { key: "todo", label: "A faire", color: "#6b7280" },
   { key: "in_progress", label: "En cours", color: "#fbbf24" },
-  { key: "done", label: "Terminé", color: "#34d399" },
+  { key: "done", label: "Termin\u00e9", color: "#34d399" },
 ];
 
 const PRIORITIES = [
@@ -31,11 +37,41 @@ const PRIORITIES = [
   { key: "urgent", label: "Urgent", color: "#ef4444" },
 ];
 
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isOverdue(due: string | null): boolean {
+  if (!due) return false;
+  return due < todayStr();
+}
+
+function isToday(due: string | null): boolean {
+  if (!due) return false;
+  return due === todayStr();
+}
+
+function sortByDueDate(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    // Overdue first, then soonest due date, then no due date last
+    const aOverdue = isOverdue(a.due_date) ? 0 : 1;
+    const bOverdue = isOverdue(b.due_date) ? 0 : 1;
+    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+    if (a.due_date && !b.due_date) return -1;
+    if (!a.due_date && b.due_date) return 1;
+    return 0;
+  });
+}
+
 export default function TasksPage({ space }: { space: "pro" | "perso" }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTitle, setNewTitle] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
   const [view, setView] = useState<"list" | "kanban">("kanban");
   const [filter, setFilter] = useState<string | null>(null);
+  const [todayFilter, setTodayFilter] = useState(false);
+  const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([]);
   const config = SPACES[space];
 
   const fetchTasks = useCallback(async () => {
@@ -50,9 +86,10 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ space, title: newTitle.trim() }),
+      body: JSON.stringify({ space, title: newTitle.trim(), due_date: newDueDate || null }),
     });
     setNewTitle("");
+    setNewDueDate("");
     fetchTasks();
   }
 
@@ -65,9 +102,27 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     fetchTasks();
   }
 
-  async function deleteTask(id: number) {
-    await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
-    fetchTasks();
+  // Soft delete: add to pending, actually delete after 5s
+  function requestDeleteTask(id: number) {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    const timer = setTimeout(async () => {
+      await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
+      setPendingDeletes((prev) => prev.filter((pd) => pd.id !== id));
+      fetchTasks();
+    }, 5000);
+    setPendingDeletes((prev) => [...prev, { id, task, timer }]);
+    // Optimistically remove from visible tasks
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  function undoDelete(id: number) {
+    const pd = pendingDeletes.find((p) => p.id === id);
+    if (!pd) return;
+    clearTimeout(pd.timer);
+    setPendingDeletes((prev) => prev.filter((p) => p.id !== id));
+    // Restore the task
+    setTasks((prev) => [...prev, pd.task]);
   }
 
   async function updatePriority(id: number, priority: string) {
@@ -79,7 +134,13 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     fetchTasks();
   }
 
-  const filteredTasks = filter ? tasks.filter((t) => t.status === filter) : tasks;
+  // Apply filters
+  let displayTasks = filter ? tasks.filter((t) => t.status === filter) : tasks;
+  if (todayFilter) {
+    displayTasks = displayTasks.filter((t) => isToday(t.due_date) || isOverdue(t.due_date));
+  }
+  displayTasks = sortByDueDate(displayTasks);
+
   const bgColor = space === "pro" ? "bg-[#0a0f1e]" : "bg-[#080c14]";
   const cardBg = space === "pro" ? "bg-[#0d1220]" : "bg-[#0d1117]";
 
@@ -87,7 +148,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     <main className={`min-h-screen ${bgColor} p-4 md:p-8`}>
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">Tâches</h1>
+          <h1 className="text-2xl font-bold text-white">T&acirc;ches</h1>
           <div className="flex gap-2">
             <Button variant={view === "kanban" ? "default" : "outline"} size="sm"
               onClick={() => setView("kanban")}
@@ -102,14 +163,20 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
           </div>
         </div>
 
-        {/* Quick add */}
+        {/* Quick add with due date */}
         <div className="flex gap-2">
           <Input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addTask()}
-            placeholder="Nouvelle tâche..."
+            placeholder="Nouvelle t&acirc;che..."
             className={`${cardBg} border-gray-700 text-white flex-1`}
+          />
+          <Input
+            type="date"
+            value={newDueDate}
+            onChange={(e) => setNewDueDate(e.target.value)}
+            className={`${cardBg} border-gray-700 text-white w-40 text-sm`}
           />
           <Button onClick={addTask} style={{ backgroundColor: config.color }} className="text-white hover:opacity-90">
             Ajouter
@@ -120,7 +187,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
         {view === "kanban" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {STATUSES.map((status) => {
-              const statusTasks = tasks.filter((t) => t.status === status.key);
+              const statusTasks = sortByDueDate(tasks.filter((t) => t.status === status.key));
               return (
                 <div key={status.key} className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -131,11 +198,22 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                   <div className="space-y-2">
                     {statusTasks.map((task) => {
                       const pri = PRIORITIES.find((p) => p.key === task.priority);
+                      const overdue = status.key !== "done" && isOverdue(task.due_date);
                       return (
                         <Card key={task.id} className={`${cardBg} border-gray-800`}>
                           <CardContent className="p-3 space-y-2">
                             <p className="text-sm text-white">{task.title}</p>
                             {task.description && <p className="text-xs text-gray-500">{task.description}</p>}
+                            {task.due_date && (
+                              <div className="flex items-center gap-1">
+                                <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
+                                  {task.due_date}
+                                </span>
+                                {overdue && (
+                                  <span className="text-[9px] bg-red-500/20 text-red-400 px-1 rounded">En retard</span>
+                                )}
+                              </div>
+                            )}
                             <div className="flex items-center justify-between">
                               <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
                                 {pri?.label}
@@ -149,7 +227,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                                     {status.key === "todo" ? "Commencer" : "Terminer"}
                                   </button>
                                 )}
-                                <button onClick={() => deleteTask(task.id)} className="text-[10px] text-gray-600 hover:text-red-400 px-1">
+                                <button onClick={() => requestDeleteTask(task.id)} className="text-[10px] text-gray-600 hover:text-red-400 px-1">
                                   Suppr.
                                 </button>
                               </div>
@@ -170,20 +248,30 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
           <Card className={`${cardBg} border-gray-800`}>
             <CardContent className="pt-4 space-y-1">
               {/* Filters */}
-              <div className="flex gap-2 mb-4">
-                <Badge variant={filter === null ? "default" : "outline"} className="cursor-pointer text-xs" onClick={() => setFilter(null)}>Toutes</Badge>
+              <div className="flex gap-2 mb-4 flex-wrap">
+                <Badge variant={filter === null && !todayFilter ? "default" : "outline"} className="cursor-pointer text-xs"
+                  onClick={() => { setFilter(null); setTodayFilter(false); }}>Toutes</Badge>
                 {STATUSES.map((s) => (
                   <Badge key={s.key} variant={filter === s.key ? "default" : "outline"} className="cursor-pointer text-xs"
                     style={filter === s.key ? { backgroundColor: s.color + "20", color: s.color } : { color: "#6b7280" }}
-                    onClick={() => setFilter(filter === s.key ? null : s.key)}>
+                    onClick={() => { setFilter(filter === s.key ? null : s.key); setTodayFilter(false); }}>
                     {s.label}
                   </Badge>
                 ))}
+                <Badge
+                  variant={todayFilter ? "default" : "outline"}
+                  className="cursor-pointer text-xs"
+                  style={todayFilter ? { backgroundColor: "#f59e0b20", color: "#f59e0b" } : { color: "#6b7280" }}
+                  onClick={() => { setTodayFilter(!todayFilter); setFilter(null); }}
+                >
+                  Aujourd&apos;hui
+                </Badge>
               </div>
-              {filteredTasks.length === 0 && <p className="text-gray-500 text-sm py-4 text-center">Aucune tâche</p>}
-              {filteredTasks.map((task) => {
+              {displayTasks.length === 0 && <p className="text-gray-500 text-sm py-4 text-center">Aucune t&acirc;che</p>}
+              {displayTasks.map((task) => {
                 const pri = PRIORITIES.find((p) => p.key === task.priority);
                 const sta = STATUSES.find((s) => s.key === task.status);
+                const overdue = task.status !== "done" && isOverdue(task.due_date);
                 return (
                   <div key={task.id} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-[#161b22] group">
                     <button
@@ -201,7 +289,12 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                       {pri?.label}
                     </Badge>
                     {task.due_date && (
-                      <span className="text-[10px] text-gray-500 font-[family-name:var(--font-jetbrains)]">{task.due_date}</span>
+                      <span className={`text-[10px] font-[family-name:var(--font-jetbrains)] ${overdue ? "text-red-400" : "text-gray-500"}`}>
+                        {task.due_date}
+                      </span>
+                    )}
+                    {overdue && (
+                      <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">En retard</span>
                     )}
                     <select
                       value={task.priority}
@@ -210,7 +303,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                     >
                       {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
                     </select>
-                    <button onClick={() => deleteTask(task.id)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">
+                    <button onClick={() => requestDeleteTask(task.id)} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">
                       &#10005;
                     </button>
                   </div>
@@ -218,6 +311,23 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
               })}
             </CardContent>
           </Card>
+        )}
+
+        {/* Delete undo toast */}
+        {pendingDeletes.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2">
+            {pendingDeletes.map((pd) => (
+              <div key={pd.id} className="bg-[#1a1f2e] border border-gray-700 rounded-lg px-4 py-3 flex items-center gap-3 shadow-lg">
+                <span className="text-sm text-gray-300">T&acirc;che supprim&eacute;e</span>
+                <button
+                  onClick={() => undoDelete(pd.id)}
+                  className="text-sm text-blue-400 hover:text-blue-300 font-medium underline"
+                >
+                  Annuler
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </main>
