@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
-import Navbar from "@/components/Navbar";
-import QuickUpdateFAB from "@/components/QuickUpdateFAB";
+import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -15,8 +14,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Patrimoine Dashboard",
-  description: "Pilotage patrimonial personnel",
+  title: "Command Center",
+  description: "Hub personnel & professionnel",
 };
 
 export default function RootLayout({
@@ -30,9 +29,9 @@ export default function RootLayout({
       className={`${dmSans.variable} ${jetbrainsMono.variable} dark h-full antialiased`}
     >
       <body className="min-h-full bg-[#080c14] text-gray-100 font-[family-name:var(--font-dm-sans)]">
-        <Navbar />
-        {children}
-        <QuickUpdateFAB />
+        <AppShell>
+          {children}
+        </AppShell>
       </body>
     </html>
   );
