@@ -3,8 +3,8 @@ import { getAuthUrl } from "@/lib/google-calendar";
 
 export const dynamic = "force-dynamic";
 
-// GET: returns the OAuth2 authorization URL
+// GET: redirects to Google OAuth2 authorization page
 export async function GET() {
   const url = getAuthUrl();
-  return NextResponse.json({ url });
+  return NextResponse.redirect(url);
 }
