@@ -7,7 +7,7 @@ export function proxy(request: NextRequest) {
   if (
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/google/callback") ||
+    pathname.startsWith("/api/google") ||
     pathname.startsWith("/api/debug-env")
   ) {
     return NextResponse.next();
