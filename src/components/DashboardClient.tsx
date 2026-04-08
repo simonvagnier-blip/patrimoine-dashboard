@@ -158,7 +158,14 @@ export default function DashboardClient({ envelopes, positions, basePath = "" }:
   const envelopeData = envelopes.map((env) => {
     const envPositions = enrichedPositions.filter((p) => p.envelope_id === env.id);
     const total = envPositions.reduce((sum, p) => sum + p.current_value, 0);
-    return { ...env, total, positionCount: envPositions.length };
+    const envPnl = envPositions.reduce((sum, p) => sum + (p.pnl ?? 0), 0);
+    const envCostBasis = envPositions.reduce((sum, p) => {
+      if (p.pnl !== null) return sum + (p.current_value - p.pnl);
+      return sum;
+    }, 0);
+    const envPnlPct = envCostBasis > 0 ? (envPnl / envCostBasis) * 100 : 0;
+    const envHasPnl = envPositions.some((p) => p.pnl !== null);
+    return { ...env, total, positionCount: envPositions.length, pnl: envPnl, pnlPct: envPnlPct, hasPnl: envHasPnl };
   });
 
   const allocationMap: Record<string, number> = {};
@@ -286,9 +293,17 @@ export default function DashboardClient({ envelopes, positions, basePath = "" }:
                   {loading && !hasQuotes ? (
                     <div className="h-7 w-24 bg-gray-800 rounded animate-pulse" />
                   ) : (
-                    <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: env.color }}>
-                      {formatEur(env.total)}
-                    </p>
+                    <>
+                      <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: env.color }}>
+                        {formatEur(env.total)}
+                      </p>
+                      {hasQuotes && env.hasPnl && (
+                        <p className={`text-xs font-[family-name:var(--font-jetbrains)] mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {env.pnl >= 0 ? "+" : ""}{formatEur(env.pnl)}
+                          <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
+                        </p>
+                      )}
+                    </>
                   )}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-gray-500">
