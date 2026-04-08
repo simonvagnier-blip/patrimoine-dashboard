@@ -1,9 +1,11 @@
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { getCalendarEvents } from "@/lib/google-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +30,31 @@ export default async function ProHome() {
   const pipelineValue = activeDeals.reduce((s, d) => s + (d.value ?? 0), 0);
   const contacts = await db.select().from(schema.contacts).all();
 
+  // Fetch upcoming Google Calendar events
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("google_access_token")?.value;
+  const refreshToken = cookieStore.get("google_refresh_token")?.value;
+  let upcomingEvents: Array<{ title: string; start: string; allDay: boolean }> = [];
+  if (accessToken && refreshToken) {
+    try {
+      const now2 = new Date();
+      const nextWeek = new Date(now2.getTime() + 14 * 86400000);
+      const events = await getCalendarEvents(accessToken, refreshToken, now2.toISOString(), nextWeek.toISOString());
+      upcomingEvents = events.slice(0, 5).map((e) => ({ title: e.title, start: e.start, allDay: e.allDay }));
+    } catch { /* calendar not connected */ }
+  }
+
   const now = new Date();
   const greeting = now.getHours() < 12 ? "Bonjour" : now.getHours() < 18 ? "Bon après-midi" : "Bonsoir";
 
   function formatEur(v: number) {
     return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+  }
+
+  function formatEventTime(start: string, allDay: boolean): string {
+    if (allDay) return "Journée";
+    const d = new Date(start);
+    return d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" }) + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   }
 
   return (
@@ -169,6 +191,37 @@ export default async function ProHome() {
                       {new Date(t.completed_at).toLocaleDateString("fr-FR")}
                     </span>
                   )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Upcoming calendar events */}
+        {upcomingEvents.length > 0 && (
+          <Card className="bg-[#0d1220] border-gray-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-400" />
+                  Prochains RDV
+                </div>
+                <Link href="/pro/agenda" className="text-xs text-blue-400 hover:text-blue-300 font-normal">
+                  Voir l&apos;agenda
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <Separator className="bg-gray-800" />
+            <CardContent className="pt-3 space-y-2">
+              {upcomingEvents.map((evt, i) => (
+                <div key={i} className="flex items-center gap-3 py-1">
+                  <div className="w-1 h-8 rounded-full bg-blue-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{evt.title}</p>
+                    <p className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
+                      {formatEventTime(evt.start, evt.allDay)}
+                    </p>
+                  </div>
                 </div>
               ))}
             </CardContent>

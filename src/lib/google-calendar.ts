@@ -47,11 +47,20 @@ export async function getCalendarEvents(
     calendarName: string;
   }> = [];
 
-  // Fetch events from each calendar
-  for (const cal of calendars) {
+  // Only keep the user's own calendars (primary + self-owned)
+  // Skip other people's calendars and shared calendars
+  const ownCalendars = calendars.filter((cal) => {
+    if (!cal.id) return false;
+    // Keep primary calendar
+    if (cal.primary) return true;
+    // Keep calendars the user owns
+    if (cal.accessRole === "owner") return true;
+    // Skip "reader" or "freeBusyReader" (other people's calendars)
+    return false;
+  });
+
+  for (const cal of ownCalendars) {
     if (!cal.id) continue;
-    // Skip "other" calendars like holidays unless selected
-    // Keep primary, owned, and shared calendars
     try {
       const res = await calendar.events.list({
         calendarId: cal.id,
