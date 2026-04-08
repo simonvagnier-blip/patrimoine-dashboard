@@ -77,6 +77,7 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
   const [newTitle, setNewTitle] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
   const [newRecurrence, setNewRecurrence] = useState("");
+  const [newPriority, setNewPriority] = useState("medium");
   const [view, setView] = useState<"list" | "kanban">("kanban");
   const [filter, setFilter] = useState<string | null>(null);
   const [todayFilter, setTodayFilter] = useState(false);
@@ -95,11 +96,12 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
     await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ space, title: newTitle.trim(), due_date: newDueDate || null, recurrence: newRecurrence || null }),
+      body: JSON.stringify({ space, title: newTitle.trim(), due_date: newDueDate || null, recurrence: newRecurrence || null, priority: newPriority }),
     });
     setNewTitle("");
     setNewDueDate("");
     setNewRecurrence("");
+    setNewPriority("medium");
     fetchTasks();
   }
 
@@ -189,6 +191,16 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
             className={`${cardBg} border-gray-700 text-white w-40 text-sm`}
           />
           <select
+            value={newPriority}
+            onChange={(e) => setNewPriority(e.target.value)}
+            className={`${cardBg} border border-gray-700 text-white rounded-md px-2 py-2 text-sm w-28`}
+            title="Priorit&eacute;"
+          >
+            {PRIORITIES.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+          </select>
+          <select
             value={newRecurrence}
             onChange={(e) => setNewRecurrence(e.target.value)}
             className={`${cardBg} border border-gray-700 text-white rounded-md px-2 py-2 text-sm w-28`}
@@ -240,7 +252,14 @@ export default function TasksPage({ space }: { space: "pro" | "perso" }) {
                               </span>
                             )}
                             <div className="flex items-center justify-between">
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ color: pri?.color, borderColor: pri?.color + "40" }}>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 cursor-pointer hover:opacity-80" style={{ color: pri?.color, borderColor: pri?.color + "40" }}
+                                onClick={() => {
+                                  const keys = PRIORITIES.map((p) => p.key);
+                                  const next = keys[(keys.indexOf(task.priority) + 1) % keys.length];
+                                  updatePriority(task.id, next);
+                                }}
+                                title="Cliquer pour changer la priorit&eacute;"
+                              >
                                 {pri?.label}
                               </Badge>
                               <div className="flex gap-1">
