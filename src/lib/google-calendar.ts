@@ -30,25 +30,60 @@ export async function getCalendarEvents(
 
   const calendar = google.calendar({ version: "v3", auth: client });
 
-  const res = await calendar.events.list({
-    calendarId: "primary",
-    timeMin,
-    timeMax,
-    maxResults: 50,
-    singleEvents: true,
-    orderBy: "startTime",
-  });
+  // Fetch all calendars the user has access to
+  const calendarList = await calendar.calendarList.list();
+  const calendars = calendarList.data.items || [];
 
-  return (res.data.items || []).map((event) => ({
-    id: event.id,
-    title: event.summary || "(sans titre)",
-    start: event.start?.dateTime || event.start?.date || "",
-    end: event.end?.dateTime || event.end?.date || "",
-    allDay: !event.start?.dateTime,
-    location: event.location || null,
-    description: event.description || null,
-    color: event.colorId || null,
-    htmlLink: event.htmlLink || null,
-  }));
+  const allEvents: Array<{
+    id: string | null | undefined;
+    title: string;
+    start: string;
+    end: string;
+    allDay: boolean;
+    location: string | null;
+    description: string | null;
+    color: string | null;
+    htmlLink: string | null;
+    calendarName: string;
+  }> = [];
+
+  // Fetch events from each calendar
+  for (const cal of calendars) {
+    if (!cal.id) continue;
+    // Skip "other" calendars like holidays unless selected
+    // Keep primary, owned, and shared calendars
+    try {
+      const res = await calendar.events.list({
+        calendarId: cal.id,
+        timeMin,
+        timeMax,
+        maxResults: 100,
+        singleEvents: true,
+        orderBy: "startTime",
+      });
+
+      for (const event of res.data.items || []) {
+        allEvents.push({
+          id: event.id,
+          title: event.summary || "(sans titre)",
+          start: event.start?.dateTime || event.start?.date || "",
+          end: event.end?.dateTime || event.end?.date || "",
+          allDay: !event.start?.dateTime,
+          location: event.location || null,
+          description: event.description || null,
+          color: event.colorId || cal.backgroundColor || null,
+          htmlLink: event.htmlLink || null,
+          calendarName: cal.summary || "Calendrier",
+        });
+      }
+    } catch {
+      // Skip calendars we can't access
+      console.warn(`Could not fetch events from calendar: ${cal.summary}`);
+    }
+  }
+
+  // Sort by start time
+  allEvents.sort((a, b) => a.start.localeCompare(b.start));
+
+  return allEvents;
 }
-// env check
