@@ -85,24 +85,14 @@ export default async function ProHome() {
               </CardContent>
             </Card>
           </Link>
-          <div className="grid grid-cols-2 gap-4">
-            <Link href="/pro/kpis">
-              <Card className="bg-[#0d1220] border-gray-800 hover:border-blue-800 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <p className="text-xs text-gray-400 mb-1">KPIs</p>
-                  <p className="text-sm text-gray-500">Objectifs</p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/pro/agenda">
-              <Card className="bg-[#0d1220] border-gray-800 hover:border-blue-800 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <p className="text-xs text-gray-400 mb-1">Agenda</p>
-                  <p className="text-sm text-gray-500">Google Cal</p>
-                </CardContent>
-              </Card>
-            </Link>
-          </div>
+          <Link href="/pro/kpis">
+            <Card className="bg-[#0d1220] border-gray-800 hover:border-blue-800 transition-colors cursor-pointer h-full">
+              <CardContent className="p-4">
+                <p className="text-xs text-gray-400 mb-1">KPIs</p>
+                <p className="text-sm text-gray-500">Objectifs</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Tasks detail section */}

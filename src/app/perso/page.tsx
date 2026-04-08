@@ -95,24 +95,14 @@ export default async function PersoHome() {
               </CardContent>
             </Card>
           </Link>
-          <div className="grid grid-cols-2 gap-4">
-            <Link href="/perso/budget">
-              <Card className="bg-[#0d1117] border-gray-800 hover:border-emerald-800 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <p className="text-xs text-gray-400 mb-1">Budget</p>
-                  <p className="text-sm text-gray-500">Suivi</p>
-                </CardContent>
-              </Card>
-            </Link>
-            <Link href="/perso/agenda">
-              <Card className="bg-[#0d1117] border-gray-800 hover:border-emerald-800 transition-colors cursor-pointer h-full">
-                <CardContent className="p-4">
-                  <p className="text-xs text-gray-400 mb-1">Agenda</p>
-                  <p className="text-sm text-gray-500">Apple Cal</p>
-                </CardContent>
-              </Card>
-            </Link>
-          </div>
+          <Link href="/perso/budget">
+            <Card className="bg-[#0d1117] border-gray-800 hover:border-emerald-800 transition-colors cursor-pointer h-full">
+              <CardContent className="p-4">
+                <p className="text-xs text-gray-400 mb-1">Budget</p>
+                <p className="text-sm text-gray-500">Suivi</p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Tasks detail section */}
