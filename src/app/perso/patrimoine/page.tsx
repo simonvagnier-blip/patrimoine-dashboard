@@ -11,6 +11,7 @@ export default async function DashboardPage() {
     <DashboardClient
       envelopes={envelopes}
       positions={positions}
+      basePath="/perso/patrimoine"
     />
   );
 }

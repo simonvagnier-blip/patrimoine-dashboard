@@ -38,6 +38,7 @@ interface Position {
 interface DashboardClientProps {
   envelopes: Envelope[];
   positions: Position[];
+  basePath?: string;
 }
 
 function computePositionValue(
@@ -77,7 +78,7 @@ function formatEur(v: number, decimals = 0): string {
 
 interface Snapshot { date: string; total_value: number; }
 
-export default function DashboardClient({ envelopes, positions }: DashboardClientProps) {
+export default function DashboardClient({ envelopes, positions, basePath = "" }: DashboardClientProps) {
   const [quotes, setQuotes] = useState<QuotesResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState("");
@@ -273,7 +274,7 @@ export default function DashboardClient({ envelopes, positions }: DashboardClien
         {/* Envelope Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {envelopeData.map((env) => (
-            <Link key={env.id} href={`/envelope/${env.id}`}>
+            <Link key={env.id} href={`${basePath}/envelope/${env.id}`}>
               <Card className="bg-[#0d1117] border-gray-800 hover:border-gray-600 transition-colors cursor-pointer h-full">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-gray-400 flex items-center">
