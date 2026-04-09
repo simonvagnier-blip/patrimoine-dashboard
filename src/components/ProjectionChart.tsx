@@ -9,14 +9,22 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Line,
+  ComposedChart,
 } from "recharts";
 import type { ScenarioResult } from "@/lib/simulation";
+
+export interface HistoryPoint {
+  date: string;
+  total_value: number;
+}
 
 interface ProjectionChartProps {
   results: ScenarioResult[];
   horizonYears: number;
   currentAge: number;
   retireAge: number;
+  history?: HistoryPoint[];
 }
 
 const SCENARIO_COLORS = {
@@ -43,15 +51,18 @@ function CustomTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
+  payload?: Array<{ name: string; value: number; color: string; dataKey: string }>;
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
 
+  // Filter out null/undefined values
+  const validEntries = payload.filter((e) => e.value != null);
+
   return (
     <div className="bg-[#161b22] border border-gray-700 rounded-lg px-4 py-3 text-sm shadow-xl">
       <p className="text-gray-300 font-medium mb-2">{label}</p>
-      {payload.map((entry) => (
+      {validEntries.map((entry) => (
         <div key={entry.name} className="flex items-center gap-2">
           <span
             className="w-2 h-2 rounded-full"
@@ -76,20 +87,63 @@ export default function ProjectionChart({
   horizonYears,
   currentAge,
   retireAge,
+  history,
 }: ProjectionChartProps) {
-  // Build chart data: one entry per year
-  const chartData = [];
+  // Build history data points (monthly samples to avoid clutter)
+  const historyByMonth: Record<string, number> = {};
+  if (history && history.length > 0) {
+    for (const h of history) {
+      // Group by month (YYYY-MM)
+      const monthKey = h.date.slice(0, 7);
+      historyByMonth[monthKey] = h.total_value; // last value of the month wins
+    }
+  }
+
+  const historyMonths = Object.keys(historyByMonth).sort();
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth(); // 0-indexed
+
+  // Build chart data: history months + projection years
+  const chartData: Record<string, string | number | null>[] = [];
+
+  // Add history points
+  for (const monthKey of historyMonths) {
+    const [y, m] = monthKey.split("-").map(Number);
+    // Calculate fractional years before today
+    const monthsDiff = (currentYear - y) * 12 + (currentMonth - (m - 1));
+    const yearsDiff = monthsDiff / 12;
+    const age = currentAge - yearsDiff;
+
+    chartData.push({
+      year: `${Math.round(age)} ans`,
+      label: monthKey,
+      history: Math.round(historyByMonth[monthKey]),
+      o: null,
+      m: null,
+      p: null,
+      invested: null,
+      _isHistory: 1,
+    });
+  }
+
+  // Add projection data points (starting from year 0 = now)
   for (let y = 0; y <= horizonYears; y++) {
-    const entry: Record<string, string | number> = {
+    const entry: Record<string, string | number | null> = {
       year: `${currentAge + y} ans`,
       label: `+${y}`,
+      history: null,
+      _isHistory: 0,
     };
+
+    // Connect history to projection: year 0 gets the history value too
+    if (y === 0 && history && history.length > 0) {
+      entry.history = Math.round(history[history.length - 1].total_value);
+    }
 
     for (const r of results) {
       entry[r.scenario] = Math.round(r.totals[y]);
     }
 
-    // Invested (same across scenarios)
     if (results[0]) {
       entry["invested"] = Math.round(results[0].invested[y]);
     }
@@ -97,10 +151,13 @@ export default function ProjectionChart({
     chartData.push(entry);
   }
 
+  // Find the "today" index for the reference line
+  const todayLabel = `${currentAge} ans`;
+
   return (
     <div className="w-full h-[400px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
+        <ComposedChart
           data={chartData}
           margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
         >
@@ -109,7 +166,7 @@ export default function ProjectionChart({
             dataKey="year"
             stroke="#6b7280"
             tick={{ fill: "#9ca3af", fontSize: 12 }}
-            interval={Math.max(0, Math.floor(horizonYears / 8) - 1)}
+            interval={Math.max(0, Math.floor(chartData.length / 10) - 1)}
           />
           <YAxis
             stroke="#6b7280"
@@ -118,6 +175,17 @@ export default function ProjectionChart({
             width={70}
           />
           <Tooltip content={<CustomTooltip />} />
+
+          {/* Historical real line */}
+          <Line
+            type="monotone"
+            dataKey="history"
+            name="Historique réel"
+            stroke="#ffffff"
+            strokeWidth={2.5}
+            dot={false}
+            connectNulls={true}
+          />
 
           {/* Optimiste */}
           <Area
@@ -128,6 +196,7 @@ export default function ProjectionChart({
             fill={SCENARIO_COLORS.o}
             fillOpacity={0.1}
             strokeWidth={2}
+            connectNulls={false}
           />
 
           {/* Modéré */}
@@ -139,6 +208,7 @@ export default function ProjectionChart({
             fill={SCENARIO_COLORS.m}
             fillOpacity={0.15}
             strokeWidth={2}
+            connectNulls={false}
           />
 
           {/* Pessimiste */}
@@ -150,6 +220,7 @@ export default function ProjectionChart({
             fill={SCENARIO_COLORS.p}
             fillOpacity={0.1}
             strokeWidth={2}
+            connectNulls={false}
           />
 
           {/* Invested dashed line */}
@@ -161,7 +232,24 @@ export default function ProjectionChart({
             strokeDasharray="6 4"
             fill="none"
             strokeWidth={1.5}
+            connectNulls={false}
           />
+
+          {/* Today line */}
+          {history && history.length > 0 && (
+            <ReferenceLine
+              x={todayLabel}
+              stroke="#ffffff"
+              strokeDasharray="4 4"
+              strokeOpacity={0.4}
+              label={{
+                value: "Aujourd'hui",
+                fill: "#9ca3af",
+                fontSize: 11,
+                position: "top",
+              }}
+            />
+          )}
 
           {/* Retirement line */}
           <ReferenceLine
@@ -175,7 +263,7 @@ export default function ProjectionChart({
               position: "top",
             }}
           />
-        </AreaChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

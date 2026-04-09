@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import ProjectionChart from "@/components/ProjectionChart";
+import ProjectionChart, { type HistoryPoint } from "@/components/ProjectionChart";
 import {
   runSimulation,
   computeWeightedReturn,
@@ -108,6 +108,7 @@ export default function ProjectionsClient({
   );
   const [scenarioParams, setScenarioParams] = useState(initialScenarioParams);
   const [quotes, setQuotes] = useState<QuotesResult | null>(null);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [saved, setSaved] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -120,6 +121,11 @@ export default function ProjectionsClient({
 
   useEffect(() => {
     fetchQuotes();
+    // Fetch all available history
+    fetch("/api/snapshots?days=3650")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: HistoryPoint[]) => setHistory(data))
+      .catch(() => {});
   }, [fetchQuotes]);
 
   // Compute current value per position
@@ -321,6 +327,7 @@ export default function ProjectionsClient({
               horizonYears={Math.max(...HORIZONS)}
               currentAge={currentAge}
               retireAge={retireAge}
+              history={history}
             />
           </CardContent>
         </Card>
