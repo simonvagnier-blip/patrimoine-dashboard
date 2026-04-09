@@ -1,0 +1,1 @@
+ALTER TABLE `snapshots` ADD `invested_total` real;

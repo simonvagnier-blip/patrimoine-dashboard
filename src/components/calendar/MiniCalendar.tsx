@@ -28,7 +28,7 @@ export default function MiniCalendar({ selectedDate, onSelectDate, events }: Min
   }
 
   function hasEvents(date: Date): boolean {
-    const key = date.toISOString().split("T")[0];
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     return events.some((e) => e.start.startsWith(key));
   }
 

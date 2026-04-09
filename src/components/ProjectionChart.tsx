@@ -17,6 +17,7 @@ import type { ScenarioResult } from "@/lib/simulation";
 export interface HistoryPoint {
   date: string;
   total_value: number;
+  invested_total?: number | null;
 }
 
 interface ProjectionChartProps {
@@ -103,6 +104,15 @@ export default function ProjectionChart({
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth(); // 0-indexed
 
+  // Build invested history by month (same grouping)
+  const investedByMonth: Record<string, number | null> = {};
+  if (history && history.length > 0) {
+    for (const h of history) {
+      const monthKey = h.date.slice(0, 7);
+      investedByMonth[monthKey] = h.invested_total ?? null;
+    }
+  }
+
   // Build chart data: history months + projection years
   const chartData: Record<string, string | number | null>[] = [];
 
@@ -118,6 +128,7 @@ export default function ProjectionChart({
       year: `${Math.round(age)} ans`,
       label: monthKey,
       history: Math.round(historyByMonth[monthKey]),
+      history_invested: investedByMonth[monthKey] != null ? Math.round(investedByMonth[monthKey]!) : null,
       o: null,
       m: null,
       p: null,
@@ -138,6 +149,8 @@ export default function ProjectionChart({
     // Connect history to projection: year 0 gets the history value too
     if (y === 0 && history && history.length > 0) {
       entry.history = Math.round(history[history.length - 1].total_value);
+      const lastInvested = history[history.length - 1].invested_total;
+      entry.history_invested = lastInvested != null ? Math.round(lastInvested) : null;
     }
 
     for (const r of results) {
@@ -183,6 +196,18 @@ export default function ProjectionChart({
             name="Historique réel"
             stroke="#ffffff"
             strokeWidth={2.5}
+            dot={false}
+            connectNulls={true}
+          />
+
+          {/* Historical invested capital line */}
+          <Line
+            type="monotone"
+            dataKey="history_invested"
+            name="Capital investi (réel)"
+            stroke="#6b7280"
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
             dot={false}
             connectNulls={true}
           />

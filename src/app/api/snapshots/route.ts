@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
     await db.update(schema.snapshots)
       .set({
         total_value: body.total_value,
+        invested_total: body.invested_total ?? null,
         details_json: JSON.stringify(body.details),
       })
       .where(eq(schema.snapshots.id, existing.id))
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
       .values({
         date: today,
         total_value: body.total_value,
+        invested_total: body.invested_total ?? null,
         details_json: JSON.stringify(body.details),
         created_at: new Date().toISOString(),
       })

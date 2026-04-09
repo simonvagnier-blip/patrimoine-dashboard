@@ -49,6 +49,7 @@ export const snapshots = sqliteTable("snapshots", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull(),
   total_value: real("total_value").notNull(),
+  invested_total: real("invested_total"),
   details_json: text("details_json").notNull(),
   created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
 });

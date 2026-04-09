@@ -26,8 +26,7 @@ export function useCalendarEvents(
             return (data.events || []).map((e: CalendarEvent) => ({ ...e, source: "pro" as const }));
           }
         } else {
-          const days = Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000);
-          const res = await fetch(`/api/apple-calendar?days=${days}`);
+          const res = await fetch(`/api/apple-calendar?timeMin=${startDate.toISOString()}&timeMax=${endDate.toISOString()}`);
           if (res.ok) {
             const data = await res.json();
             return (data.events || []).map((e: CalendarEvent) => ({ ...e, source: "perso" as const }));

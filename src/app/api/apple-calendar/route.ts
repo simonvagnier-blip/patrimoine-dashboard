@@ -15,14 +15,36 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const days = parseInt(request.nextUrl.searchParams.get("days") || "7");
-  const now = new Date();
-  const end = new Date();
-  end.setDate(end.getDate() + days);
+  // Support explicit timeMin/timeMax (like Google) or fallback to days param
+  const timeMinParam = request.nextUrl.searchParams.get("timeMin");
+  const timeMaxParam = request.nextUrl.searchParams.get("timeMax");
+  const debug = request.nextUrl.searchParams.get("debug") === "1";
+
+  let now: Date;
+  let end: Date;
+
+  if (timeMinParam && timeMaxParam) {
+    now = new Date(timeMinParam);
+    end = new Date(timeMaxParam);
+  } else {
+    const days = parseInt(request.nextUrl.searchParams.get("days") || "7");
+    now = new Date();
+    end = new Date();
+    end.setDate(end.getDate() + days);
+  }
 
   try {
-    const events = await fetchAppleCalendarEvents(serverUrl, username, password, now, end);
-    return NextResponse.json({ events });
+    const result = await fetchAppleCalendarEvents(serverUrl, username, password, now, end, debug);
+    if (debug) {
+      return NextResponse.json({
+        events: result.events,
+        debug: {
+          ...result.debugInfo,
+          timeRange: { start: now.toISOString(), end: end.toISOString() },
+        },
+      });
+    }
+    return NextResponse.json({ events: result.events });
   } catch (error) {
     console.error("Apple Calendar fetch error:", error);
     return NextResponse.json(

@@ -140,17 +140,17 @@ export default function WeekView({ events, weekStart, onEventClick, onDayClick }
           </div>
 
           {/* 7 day columns */}
-          <div className="grid grid-cols-7 flex-1 relative">
-            {/* Hour grid lines (shared across columns) */}
+          <div className="flex-1 relative">
+            {/* Hour grid lines (absolutely positioned, outside the grid flow) */}
             {HOURS.map((hour, i) => (
-              <div key={hour}>
+              <div key={hour} className="absolute left-0 right-0 pointer-events-none">
                 <div
-                  className="border-t border-gray-800/40 absolute left-0 right-0"
-                  style={{ top: i * HOUR_HEIGHT }}
+                  className="border-t border-gray-800/40"
+                  style={{ position: "absolute", top: i * HOUR_HEIGHT, left: 0, right: 0 }}
                 />
                 <div
-                  className="border-t border-gray-800/20 border-dashed absolute left-0 right-0"
-                  style={{ top: i * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+                  className="border-t border-gray-800/20 border-dashed"
+                  style={{ position: "absolute", top: i * HOUR_HEIGHT + HOUR_HEIGHT / 2, left: 0, right: 0 }}
                 />
               </div>
             ))}
@@ -165,33 +165,35 @@ export default function WeekView({ events, weekStart, onEventClick, onDayClick }
               </div>
             )}
 
-            {/* Day columns */}
-            {days.map((day, colIndex) => (
-              <div
-                key={colIndex}
-                className={`relative ${colIndex < 6 ? "border-r border-gray-800/30" : ""}`}
-                style={{ height: totalHeight }}
-              >
-                {eventsByDay[colIndex].map((event) => {
-                  const top = getEventTop(event.start, START_HOUR, HOUR_HEIGHT);
-                  const height = getEventHeight(event.start, event.end, HOUR_HEIGHT);
-                  const colors = SOURCE_COLORS[event.source];
-                  return (
-                    <div
-                      key={event.id}
-                      onClick={() => onEventClick(event)}
-                      className={`absolute ${colors.bg} ${colors.border} rounded-md px-1 py-0.5 border-l-2 cursor-pointer overflow-hidden z-10`}
-                      style={{ top, height, width: "calc(100% - 2px)", left: 0 }}
-                    >
-                      <div className="text-[10px] font-medium text-white truncate">{event.title}</div>
-                      <div className="text-[9px] text-gray-400 font-mono">
-                        {formatTime(event.start)}
+            {/* Day columns grid */}
+            <div className="grid grid-cols-7 h-full">
+              {days.map((day, colIndex) => (
+                <div
+                  key={colIndex}
+                  className={`relative ${colIndex < 6 ? "border-r border-gray-800/30" : ""}`}
+                  style={{ height: totalHeight }}
+                >
+                  {eventsByDay[colIndex].map((event) => {
+                    const top = getEventTop(event.start, START_HOUR, HOUR_HEIGHT);
+                    const height = getEventHeight(event.start, event.end, HOUR_HEIGHT);
+                    const colors = SOURCE_COLORS[event.source];
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={() => onEventClick(event)}
+                        className={`absolute ${colors.bg} ${colors.border} rounded-md px-1 py-0.5 border-l-2 cursor-pointer overflow-hidden z-10`}
+                        style={{ top, height, width: "calc(100% - 2px)", left: 0 }}
+                      >
+                        <div className="text-[10px] font-medium text-white truncate">{event.title}</div>
+                        <div className="text-[9px] text-gray-400 font-mono">
+                          {formatTime(event.start)}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

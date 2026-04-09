@@ -141,10 +141,16 @@ export default function DashboardClient({ envelopes, positions, basePath = "" }:
     for (const env of envelopes) {
       details[env.id] = enrichedPositions.filter((p) => p.envelope_id === env.id).reduce((s, p) => s + p.current_value, 0);
     }
+    // Compute invested capital (sum of cost basis for all positions with P&L)
+    const investedTotal = enrichedPositions.reduce((sum, p) => {
+      if (p.pnl !== null) return sum + (p.current_value - p.pnl);
+      if (p.manual_value !== null) return sum + p.manual_value;
+      return sum + p.current_value;
+    }, 0);
     fetch("/api/snapshots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ total_value: grandTotal, details }),
+      body: JSON.stringify({ total_value: grandTotal, invested_total: investedTotal, details }),
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasQuotes]);

@@ -185,6 +185,38 @@ export default function ProjectionsClient({
 
   const results = useMemo(() => runSimulation(simInput), [simInput]);
 
+  // Compute current invested capital and plus-value
+  const { totalValue, investedCapital, plusValue, plusValuePct } = useMemo(() => {
+    const eurUsd = quotes?.eurUsd ?? 1.08;
+    let total = 0;
+    let invested = 0;
+    for (const pos of positions) {
+      if (pos.manual_value !== null) {
+        total += pos.manual_value;
+        invested += pos.manual_value;
+        continue;
+      }
+      if (!pos.quantity || !pos.pru) continue;
+      const quote = pos.yahoo_ticker && quotes?.quotes[pos.yahoo_ticker];
+      let currentVal: number;
+      if (quote) {
+        const raw = pos.quantity * quote.price;
+        currentVal = pos.currency === "USD" ? raw / eurUsd : raw;
+      } else {
+        const raw = pos.quantity * pos.pru;
+        currentVal = pos.currency === "USD" ? raw / eurUsd : raw;
+      }
+      const costBasis = pos.currency === "USD"
+        ? (pos.quantity * pos.pru) / eurUsd
+        : pos.quantity * pos.pru;
+      total += currentVal;
+      invested += costBasis;
+    }
+    const pv = total - invested;
+    const pvPct = invested > 0 ? (pv / invested) * 100 : 0;
+    return { totalValue: total, investedCapital: invested, plusValue: pv, plusValuePct: pvPct };
+  }, [positions, quotes]);
+
   // R11: Auto-save params with debounce
   const autoSave = useCallback(async () => {
     await Promise.all([
@@ -298,6 +330,37 @@ export default function ProjectionsClient({
           </CardContent>
         </Card>
 
+        {/* Current Summary: Invested vs Plus-Value */}
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="bg-[#0d1117] border-gray-800">
+            <CardContent className="pt-5 pb-4">
+              <p className="text-xs text-gray-400 mb-1">Patrimoine total</p>
+              <p className="text-xl font-bold text-white font-[family-name:var(--font-jetbrains)]">
+                {formatEur(totalValue)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="bg-[#0d1117] border-gray-800">
+            <CardContent className="pt-5 pb-4">
+              <p className="text-xs text-gray-400 mb-1">Capital investi</p>
+              <p className="text-xl font-bold text-gray-300 font-[family-name:var(--font-jetbrains)]">
+                {formatEur(investedCapital)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card className="bg-[#0d1117] border-gray-800">
+            <CardContent className="pt-5 pb-4">
+              <p className="text-xs text-gray-400 mb-1">Plus-value</p>
+              <p className={`text-xl font-bold font-[family-name:var(--font-jetbrains)] ${plusValue >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {plusValue >= 0 ? "+" : ""}{formatEur(plusValue)}
+              </p>
+              <p className={`text-xs mt-0.5 ${plusValue >= 0 ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                {plusValue >= 0 ? "+" : ""}{plusValuePct.toFixed(1)} %
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Chart */}
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader>
@@ -314,6 +377,10 @@ export default function ProjectionsClient({
                   <span className="text-gray-400">{SCENARIO_LABELS[s]}</span>
                 </span>
               ))}
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-0.5 rounded bg-white" />
+                <span className="text-gray-400">Historique réel</span>
+              </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-0.5 rounded border-b border-dashed border-gray-500" />
                 <span className="text-gray-400">Capital investi</span>
