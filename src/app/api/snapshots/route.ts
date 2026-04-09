@@ -14,10 +14,6 @@ export async function GET(request: NextRequest) {
   const rows = await db
     .select()
     .from(schema.snapshots)
-    .where(({ date }) => {
-      // manual SQL comparison since drizzle sqlite doesn't have gte for text
-      return undefined as unknown as ReturnType<typeof eq>;
-    })
     .orderBy(desc(schema.snapshots.date))
     .all();
 

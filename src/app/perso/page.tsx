@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { fetchAppleCalendarEvents } from "@/lib/apple-calendar";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 export default async function PersoHome() {
+  // Use latest snapshot for up-to-date market value
   // Use latest snapshot for up-to-date market value
   const allSnapshots = await db.select().from(schema.snapshots).all();
   const latestSnapshot = allSnapshots.sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -35,8 +37,19 @@ export default async function PersoHome() {
   const todayLogs = habitLogs.filter((l) => l.date === today);
   const completedToday = activeHabits.filter((h) => todayLogs.some((l) => l.habit_id === h.id));
 
-  // Fetch upcoming Apple Calendar events via API to avoid tsdav import issues in page context
+  // Fetch upcoming Apple Calendar events
   let upcomingEvents: Array<{ title: string; start: string; allDay: boolean }> = [];
+  const appleUrl = process.env.APPLE_CALDAV_URL;
+  const appleUser = process.env.APPLE_CALDAV_USERNAME;
+  const applePass = process.env.APPLE_CALDAV_PASSWORD;
+  if (appleUrl && appleUser && applePass) {
+    try {
+      const now2 = new Date();
+      const nextWeek = new Date(now2.getTime() + 14 * 86400000);
+      const result = await fetchAppleCalendarEvents(appleUrl, appleUser, applePass, now2, nextWeek);
+      upcomingEvents = result.events.slice(0, 5).map((e) => ({ title: e.title, start: e.start, allDay: e.allDay }));
+    } catch { /* calendar not connected */ }
+  }
 
   const now = new Date();
   const greeting = now.getHours() < 12 ? "Bonjour" : now.getHours() < 18 ? "Bon après-midi" : "Bonsoir";
