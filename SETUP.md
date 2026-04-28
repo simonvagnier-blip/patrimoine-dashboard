@@ -10,6 +10,62 @@ Dashboard sur ta machine et ton infrastructure.
 
 ---
 
+## ⚡ Mode "Claude Code fait tout"
+
+Si tu as **Claude Code** installé, tu peux laisser un agent faire ~80 % de
+l'install à ta place. Lance-le dans un dossier vide et **colle exactement** ce
+prompt :
+
+```
+Installe pour moi le dashboard Patrimoine depuis
+https://github.com/simonvagnier-blip/patrimoine-dashboard.
+
+Suis le SETUP.md du repo. Tu peux exécuter toutes les commandes shell, écrire
+le .env.local, lancer les migrations, faire le seed vide, builder, et tester
+localement avec `npm run dev`. Tu déploieras aussi sur Vercel quand tout sera
+prêt en local.
+
+À chaque fois que tu as besoin d'une décision personnelle ou d'une action
+manuelle (login Turso, login Vercel, choix d'un mot de passe, OAuth Google,
+OAuth Apple), STOPPE et demande-moi clairement quoi faire avec une consigne
+copiable.
+
+Progression :
+1. Vérifier les pré-requis (Node 20+, git, turso CLI, vercel CLI). Installer
+   ce qui manque via brew si je suis sur Mac.
+2. Cloner le repo dans le dossier courant et faire `npm install`.
+3. Me demander de me logger sur Turso (`turso auth login`) et de te donner
+   le nom que je veux pour ma DB (par défaut: `patrimoine`).
+4. Créer la DB, récupérer URL + token.
+5. Me demander un mot de passe pour DASHBOARD_PASSWORD et générer un
+   API_TOKEN aléatoire (openssl rand -hex 32).
+6. Écrire le .env.local complet (sans Google/Apple par défaut, je
+   compléterai plus tard).
+7. Lancer `npm run db:migrate` puis `npm run db:seed:empty`.
+8. Builder en local (`npm run build`) pour vérifier qu'il n'y a pas
+   d'erreur, puis lancer `npm run dev` et m'inviter à tester sur
+   localhost:3000.
+9. Quand je confirme que ça marche en local, me demander de me logger
+   sur Vercel (`vercel login`) puis faire le `vercel` initial + ajouter
+   les env vars de prod, puis `vercel --prod`.
+10. Me proposer de configurer le MCP côté Claude Code (`claude mcp add`)
+    avec mon API_TOKEN et l'URL Vercel obtenue.
+
+À la fin, fais-moi un récap clair : URL de mon dashboard, mot de passe,
+URL Turso, et les prochaines étapes (ajouter mes enveloppes/positions
+via l'UI, importer mon budget si je suis chez Fortuneo, brancher
+calendar plus tard).
+```
+
+⚠️ **À garder en main pour intervenir** : ton mot de passe Turso/Vercel
+(login one-shot dans le navigateur), un mot de passe pour ton dashboard,
+et 5 min d'attention pour les "demande-moi" du flow.
+
+Si tu n'as pas Claude Code ou préfères faire toi-même, le guide manuel
+ci-dessous reste valide.
+
+---
+
 ## 1. Pré-requis
 
 | Outil | Pourquoi | Comment l'avoir |
