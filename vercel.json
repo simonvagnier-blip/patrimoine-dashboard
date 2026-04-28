@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/snapshot-envelopes",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}

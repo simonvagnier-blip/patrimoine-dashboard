@@ -141,6 +141,14 @@ export default function ProjectionsClient({
     return pos.currency === "USD" ? fallback / eurUsd : fallback;
   }
 
+  // Cost basis EUR (fallback pour versements PEA quand peaVersements absent).
+  function posCostBasis(pos: Position): number {
+    if (!pos.quantity || !pos.pru) return 0;
+    const eurUsd = quotes?.eurUsd ?? 1.08;
+    const raw = pos.quantity * pos.pru;
+    return pos.currency === "USD" ? raw / eurUsd : raw;
+  }
+
   // Build simulation input
   const simInput = useMemo<SimulationInput>(() => {
     const maxHorizon = Math.max(...HORIZONS);
@@ -161,6 +169,27 @@ export default function ProjectionsClient({
         currentValue
       );
 
+      // PEA : priorité peaVersements saisi > somme cost_basis > currentValue (fallback sim.ts)
+      const peaVersementsRaw = initialUserParams.peaVersements;
+      const peaVersementsCumules = peaVersementsRaw
+        ? parseFloat(peaVersementsRaw)
+        : null;
+      const peaFallbackFromCostBasis =
+        env.type === "pea"
+          ? envPositions.reduce((sum, p) => sum + posCostBasis(p), 0)
+          : 0;
+      const versementsCumulesEur =
+        env.type === "pea"
+          ? (peaVersementsCumules ?? (peaFallbackFromCostBasis > 0 ? peaFallbackFromCostBasis : undefined))
+          : undefined;
+      // Capital investi initial : cost_basis + manual_value, livrets exclus.
+      const initialInvestedEur =
+        env.type === "livrets"
+          ? 0
+          : envPositions.reduce((sum, p) => {
+              if (p.manual_value !== null) return sum + p.manual_value;
+              return sum + posCostBasis(p);
+            }, 0);
       return {
         id: env.id,
         name: env.name,
@@ -171,6 +200,8 @@ export default function ProjectionsClient({
         fill_end_year: env.fill_end_year,
         annual_contrib: env.id === "per" ? perContrib : env.annual_contrib,
         returns,
+        versements_cumules_eur: versementsCumulesEur,
+        initial_invested_eur: initialInvestedEur,
       };
     });
 

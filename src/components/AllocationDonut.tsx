@@ -5,12 +5,14 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 const SCENARIO_LABELS: Record<string, string> = {
   sp: "S&P 500", wd: "MSCI World", em: "Emerging Markets", nq: "Nasdaq-100",
-  tech: "Tech/Growth", energy: "Énergie", fg: "Fonds garanti", fe: "Fonds euros", cash: "Cash",
+  tech: "Tech/Growth", energy: "Énergie", crypto: "Crypto",
+  fg: "Fonds garanti", fe: "Fonds euros", cash: "Cash",
 };
 
 const SCENARIO_COLORS: Record<string, string> = {
   sp: "#3b82f6", wd: "#34d399", em: "#f59e0b", nq: "#a78bfa",
-  tech: "#38bdf8", energy: "#ef4444", fg: "#6b7280", fe: "#9ca3af", cash: "#4b5563",
+  tech: "#38bdf8", energy: "#ef4444", crypto: "#f7931a",
+  fg: "#6b7280", fe: "#9ca3af", cash: "#4b5563",
 };
 
 interface AllocationData {

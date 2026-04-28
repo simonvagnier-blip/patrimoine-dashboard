@@ -1,4 +1,10 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  real,
+  primaryKey,
+} from "drizzle-orm/sqlite-core";
 
 export const envelopes = sqliteTable("envelopes", {
   id: text("id").primaryKey(),
@@ -8,6 +14,7 @@ export const envelopes = sqliteTable("envelopes", {
   target: integer("target"),
   fill_end_year: integer("fill_end_year"),
   annual_contrib: integer("annual_contrib"),
+  sort_order: integer("sort_order").notNull().default(0),
 });
 
 export const positions = sqliteTable("positions", {
@@ -24,6 +31,7 @@ export const positions = sqliteTable("positions", {
   manual_value: real("manual_value"),
   scenario_key: text("scenario_key").notNull(),
   currency: text("currency").notNull().default("EUR"),
+  sort_order: integer("sort_order").notNull().default(0),
   created_at: text("created_at")
     .notNull()
     .default("CURRENT_TIMESTAMP"),
@@ -52,6 +60,96 @@ export const snapshots = sqliteTable("snapshots", {
   invested_total: real("invested_total"),
   details_json: text("details_json").notNull(),
   created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+// Per-envelope daily snapshots for "real" history charts
+export const envelopeSnapshots = sqliteTable(
+  "envelope_snapshots",
+  {
+    envelope_id: text("envelope_id")
+      .notNull()
+      .references(() => envelopes.id),
+    date: text("date").notNull(), // YYYY-MM-DD
+    value_eur: real("value_eur").notNull(),
+    created_at: text("created_at")
+      .notNull()
+      .default("CURRENT_TIMESTAMP"),
+  },
+  (t) => [primaryKey({ columns: [t.envelope_id, t.date] })]
+);
+
+/**
+ * LOT 1 — Operations journal.
+ *
+ * One row per real-world action: buy, sell, deposit, withdrawal, dividend,
+ * fee, interest, transfer. Used downstream to compute the true TRI (xirr),
+ * track realized P&L for tax, and power the bank-import pipeline.
+ *
+ * Conventions for `amount` (EUR or native `currency`, investor-centric sign):
+ *   - deposit / dividend received / interest / sell-proceeds → NEGATIVE
+ *     (money going into the envelope is money leaving the investor's cash)
+ *   - withdrawal / buy-cost / fee                           → POSITIVE
+ *     (money going to the investor / leaving the envelope toward the market)
+ *
+ * For buy/sell, `quantity` and `unit_price` are set; `position_id` links the
+ * row to a specific position. For deposits/withdrawals, only `amount` is set.
+ */
+/**
+ * LOT 2 — Threshold alerts.
+ *
+ * One row per alert configuration. Alerts are evaluated on the fly against
+ * the current portfolio state (no separate "triggered" persistence needed
+ * for the MVP). `last_triggered_at` is bumped each time the evaluation says
+ * the alert fires, so we can show "déjà déclenchée le X" in the UI and dedupe
+ * future notifications.
+ *
+ * Alert types (`type` column):
+ *   - 'price_above' / 'price_below'  → absolute price target (in position currency)
+ *                                       requires position_id + threshold
+ *   - 'pnl_pct_above' / 'pnl_pct_below' → P&L% from PRU on a position
+ *                                       requires position_id + threshold (e.g. 20 = +20%)
+ *   - 'weight_above'                  → position weight in total portfolio
+ *                                       requires position_id + threshold (e.g. 5 = >5%)
+ *   - 'envelope_value_above' / 'envelope_value_below' → envelope total in EUR
+ *                                       requires envelope_id + threshold
+ */
+export const alerts = sqliteTable("alerts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  envelope_id: text("envelope_id").references(() => envelopes.id),
+  position_id: integer("position_id"),
+  type: text("type").notNull(),
+  threshold: real("threshold").notNull(),
+  note: text("note"),
+  active: integer("active").notNull().default(1), // 0/1 boolean
+  last_triggered_at: text("last_triggered_at"),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
+export const operations = sqliteTable("operations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  envelope_id: text("envelope_id")
+    .notNull()
+    .references(() => envelopes.id),
+  position_id: integer("position_id"), // optional, nullable (deposit/withdrawal not tied to a position)
+  date: text("date").notNull(), // YYYY-MM-DD
+  type: text("type").notNull(), // 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'dividend' | 'fee' | 'interest' | 'transfer'
+  quantity: real("quantity"),
+  unit_price: real("unit_price"),
+  amount: real("amount").notNull(), // signed (see conventions above)
+  currency: text("currency").notNull().default("EUR"),
+  note: text("note"),
+  // NB: on utilise $defaultFn plutôt que .default("CURRENT_TIMESTAMP") car
+  // Drizzle insère sinon la string littérale. Côté DDL SQLite, la colonne
+  // a bien DEFAULT CURRENT_TIMESTAMP pour robustesse si une insertion
+  // bypass Drizzle.
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updated_at: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
 });
 
 // =============================================
@@ -153,6 +251,27 @@ export const budgetEntries = sqliteTable("budget_entries", {
   date: text("date").notNull(), // YYYY-MM-DD
   recurring: integer("recurring").notNull().default(0),
   created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+/**
+ * Règles de catégorisation personnalisées : quand l'utilisateur re-catégorise
+ * une ligne du budget, on peut créer une règle "tous les libellés matchant
+ * X → catégorie Y" qui s'applique aux entrées existantes ET à tous les futurs
+ * imports CSV (via scripts/import-fortuneo-csv.mjs qui lit cette table).
+ *
+ * `match_type`:
+ *   - "exact"       : label === pattern (insensible à la casse)
+ *   - "contains"    : label contient pattern (insensible à la casse)
+ *   - "starts_with" : label commence par pattern (insensible à la casse)
+ */
+export const labelRules = sqliteTable("label_rules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  pattern: text("pattern").notNull(),
+  match_type: text("match_type").notNull().default("exact"), // 'exact' | 'contains' | 'starts_with'
+  category: text("category").notNull(),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
 });
 
 export const budgetCategories = sqliteTable("budget_categories", {

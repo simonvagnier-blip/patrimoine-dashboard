@@ -15,8 +15,25 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PositionDialog from "@/components/PositionDialog";
+import SparklineChart from "@/components/SparklineChart";
+import PositionChartPanel from "@/components/PositionChart";
+import EnvelopeChartPanel from "@/components/EnvelopeChart";
+import OperationsTimeline from "@/components/OperationsTimeline";
+import { TriBadge } from "@/components/TriBadge";
+import type { ReturnsResult } from "@/lib/returns";
+import PositionAlerts from "@/components/PositionAlerts";
+import PositionDividends from "@/components/PositionDividends";
+import KebabMenu from "@/components/KebabMenu";
 import Link from "next/link";
 import type { QuotesResult } from "@/lib/quotes";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, useSortable, verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Envelope {
   id: string; name: string; type: string; color: string;
@@ -33,9 +50,257 @@ function formatEur(v: number, d = 0): string {
   return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d });
 }
 
+interface EnrichedPosition extends Position {
+  price: number | null;
+  value: number;
+  pnl: number | null;
+  pnlPct: number | null;
+}
+
+function SortablePositionCard({
+  pos, isExpanded, onToggle, quotes, totalValue, pnlColor, onBuy, onEdit, onDelete, triRow, triggeredCount, onAlertsChanged,
+}: {
+  pos: EnrichedPosition;
+  isExpanded: boolean;
+  onToggle: () => void;
+  quotes: QuotesResult | null;
+  totalValue: number;
+  pnlColor: (pnl: number | null) => string;
+  onBuy: (p: Position) => void;
+  onEdit: (p: Position) => void;
+  onDelete: (p: Position) => void;
+  triRow: { tri_annual: number | null; cashflow_count: number; coverage: "full" | "partial" | "none" } | null;
+  triggeredCount: number;
+  onAlertsChanged: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pos.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  const sym = pos.currency === "USD" ? "$" : "€";
+  const costBasis = pos.quantity && pos.pru ? pos.quantity * pos.pru : null;
+  const costBasisEur = costBasis !== null && pos.currency === "USD" ? costBasis / (quotes?.eurUsd ?? 1.08) : costBasis;
+  const variationPct = pos.price !== null && pos.pru ? ((pos.price - pos.pru) / pos.pru) * 100 : null;
+
+  return (
+    <div ref={setNodeRef} style={style} className={`bg-[#161b22] rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? "ring-1 ring-gray-700" : "hover:ring-1 hover:ring-gray-800"}`}>
+      {/* Main row */}
+      <div className="p-3 sm:p-4 cursor-pointer hover:bg-[#1c2333] transition-colors flex items-center gap-2" onClick={onToggle}>
+        {/* Drag handle */}
+        <button
+          {...attributes}
+          {...listeners}
+          className="touch-none cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-200 opacity-50 hover:opacity-100 shrink-0 p-1 -ml-1 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+          title="Glisser pour réordonner"
+        >
+          <svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor">
+            <circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>
+            <circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/>
+            <circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/>
+          </svg>
+        </button>
+        <div className="flex items-center justify-between gap-3 flex-1 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white shrink-0">{pos.ticker}</span>
+            {triggeredCount > 0 && (
+              <span
+                className="text-amber-400 text-xs flex items-center gap-0.5 shrink-0"
+                title={`${triggeredCount} alerte${triggeredCount > 1 ? "s" : ""} déclenchée${triggeredCount > 1 ? "s" : ""}`}
+              >
+                🔔
+                {triggeredCount > 1 && <span className="text-[10px]">{triggeredCount}</span>}
+              </span>
+            )}
+            <span className="text-sm text-gray-400 truncate hidden sm:inline">{pos.label}</span>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {pos.yahoo_ticker && (
+              <span className="hidden sm:block">
+                <SparklineChart ticker={pos.yahoo_ticker} />
+              </span>
+            )}
+            <div className="text-right">
+              <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white">
+                {formatEur(pos.value)}
+              </span>
+              {pos.pnl !== null ? (
+                <p className={`font-[family-name:var(--font-jetbrains)] text-xs ${pnlColor(pos.pnl)}`}>
+                  {pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnlPct !== null ? (pos.pnlPct >= 0 ? "+" : "") + pos.pnlPct.toFixed(1) + "%" : ""})
+                </p>
+              ) : pos.manual_value === null ? (
+                <p className="text-[10px] text-gray-600">P&amp;L en attente</p>
+              ) : null}
+              {triRow && triRow.cashflow_count > 0 && (
+                <div className="mt-0.5">
+                  <TriBadge tri={triRow.tri_annual} cashflowCount={triRow.cashflow_count} coverage={triRow.coverage} size="xs" />
+                </div>
+              )}
+            </div>
+            {/* Kebab menu : actions rapides sans avoir à déplier le panneau */}
+            <KebabMenu
+              items={[
+                ...(pos.quantity !== null
+                  ? [{ label: "Achat", icon: "+", onClick: () => onBuy(pos) }]
+                  : []),
+                { label: "Modifier", icon: "✎", onClick: () => onEdit(pos) },
+                {
+                  label: "Supprimer",
+                  icon: "✕",
+                  onClick: () => onDelete(pos),
+                  destructive: true,
+                },
+              ]}
+            />
+            <span className={`text-gray-500 text-xs transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>&#9660;</span>
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 truncate px-4 -mt-2 pb-2 sm:hidden">{pos.label}</p>
+
+      {/* Expanded detail panel */}
+      <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          <div className="border-t border-gray-800 bg-[#0d1117]">
+            <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {pos.quantity !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Quantité</p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
+                    {pos.quantity.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}
+                  </p>
+                </div>
+              )}
+              {pos.pru !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Prix de revient (PRU)</p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
+                    {pos.pru.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {sym}
+                  </p>
+                </div>
+              )}
+              {pos.price !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Cours actuel</p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
+                    {pos.price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {sym}
+                  </p>
+                </div>
+              )}
+              {variationPct !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Variation / PRU</p>
+                  <p className={`font-[family-name:var(--font-jetbrains)] text-sm font-medium ${variationPct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {variationPct >= 0 ? "+" : ""}{variationPct.toFixed(2)}%
+                  </p>
+                </div>
+              )}
+              {costBasisEur !== null && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Coût d&apos;acquisition</p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-300">{formatEur(costBasisEur)}</p>
+                </div>
+              )}
+              <div className={`${pos.pnl !== null ? "col-span-2" : ""}`}>
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">P&amp;L (B&eacute;n&eacute;fice / Perte)</p>
+                {pos.pnl !== null ? (
+                  <div className="flex items-baseline gap-3">
+                    <p className={`font-[family-name:var(--font-jetbrains)] text-lg font-bold ${pnlColor(pos.pnl)}`}>
+                      {pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}
+                    </p>
+                    <span className={`font-[family-name:var(--font-jetbrains)] text-sm font-medium px-2 py-0.5 rounded ${
+                      pos.pnl >= 0 ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"
+                    }`}>
+                      {pos.pnlPct !== null ? (pos.pnlPct >= 0 ? "+" : "") + pos.pnlPct.toFixed(2) + "%" : ""}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-500">
+                    {pos.manual_value !== null ? "N/A (fonds non coté)" : "En attente des cours..."}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Poids dans l&apos;enveloppe</p>
+                <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-300">
+                  {totalValue > 0 ? ((pos.value / totalValue) * 100).toFixed(1) + "%" : "—"}
+                </p>
+              </div>
+              {pos.manual_value !== null && (
+                <div className="col-span-2 sm:col-span-4">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Type</p>
+                  <p className="text-xs text-gray-400">Valeur saisie manuellement (fonds non coté)</p>
+                </div>
+              )}
+            </div>
+            {/* Interactive chart */}
+            {pos.yahoo_ticker && (
+              <div className="px-4 pb-4 border-t border-gray-800 pt-4">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Historique du cours</p>
+                <PositionChartPanel ticker={pos.yahoo_ticker} currency={pos.currency} quantity={pos.quantity ?? 1} />
+              </div>
+            )}
+
+            {/* LOT 4: Dividendes (s'affiche seulement si yield > 0) */}
+            {pos.yahoo_ticker && (
+              <div
+                className="px-4 pb-4 border-t border-gray-800 pt-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PositionDividends
+                  ticker={pos.ticker}
+                  yahooTicker={pos.yahoo_ticker}
+                  quantity={pos.quantity}
+                  eurUsd={quotes?.eurUsd ?? 1.08}
+                />
+              </div>
+            )}
+
+            {/* LOT 2: Alerts management */}
+            <div
+              className="px-4 pb-4 border-t border-gray-800 pt-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PositionAlerts
+                positionId={pos.id}
+                positionTicker={pos.ticker}
+                positionCurrency={pos.currency}
+                onChange={onAlertsChanged}
+              />
+            </div>
+
+            <div className="px-4 pb-3 flex justify-end gap-2 border-t border-gray-800 pt-3">
+              {pos.quantity !== null && (
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onBuy(pos); }}
+                  className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 h-7 px-3 text-xs">
+                  + Achat
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(pos); }}
+                className="text-gray-400 hover:text-white hover:bg-[#1f2937] h-7 px-3 text-xs">
+                Modifier
+              </Button>
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDelete(pos); }}
+                className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-7 px-3 text-xs">
+                Supprimer
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EnvelopeDetailClient({ envelope, initialPositions, backPath = "/perso/patrimoine", backLabel = "Patrimoine" }: { envelope: Envelope; initialPositions: Position[]; backPath?: string; backLabel?: string }) {
   const [positions, setPositions] = useState(initialPositions);
   const [quotes, setQuotes] = useState<QuotesResult | null>(null);
+  const [returns, setReturns] = useState<ReturnsResult | null>(null);
+  const [triggeredByPosition, setTriggeredByPosition] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,6 +308,24 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   const [deleteTarget, setDeleteTarget] = useState<Position | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Versements cumulés PEA (userParams.peaVersements) — utilisé pour la jauge
+  // d'objectif sur les PEA : le plafond 150k€ porte sur les dépôts, pas sur
+  // la valeur. Null = non renseigné → fallback cost_basis plus bas.
+  const [peaDeposits, setPeaDeposits] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (envelope.type !== "pea") return;
+    fetch("/api/params")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: Record<string, string> | null) => {
+        const raw = p?.peaVersements;
+        if (raw) {
+          const n = parseFloat(raw);
+          if (!isNaN(n)) setPeaDeposits(n);
+        }
+      })
+      .catch(() => {});
+  }, [envelope.type]);
 
   const fetchQuotes = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -62,6 +345,32 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   }, [envelope.id]);
 
   useEffect(() => { fetchQuotes(); }, [fetchQuotes]);
+
+  // LOT 1b: Fetch TRI whenever market values change (depends on terminal val)
+  useEffect(() => {
+    fetch("/api/returns")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: ReturnsResult | null) => { if (d) setReturns(d); })
+      .catch(() => {});
+  }, [quotes, positions]);
+
+  // LOT 2: Fetch alerts (triggered count per position) for bell icons
+  const reloadAlerts = useCallback(() => {
+    fetch(`/api/alerts?evaluate=true&envelope_id=${envelope.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.alerts) return;
+        const map = new Map<number, number>();
+        for (const a of d.alerts) {
+          if (a.triggered && a.position_id) {
+            map.set(a.position_id, (map.get(a.position_id) ?? 0) + 1);
+          }
+        }
+        setTriggeredByPosition(map);
+      })
+      .catch(() => {});
+  }, [envelope.id]);
+  useEffect(() => { reloadAlerts(); }, [reloadAlerts, quotes]);
 
   function computeValue(pos: Position) {
     if (pos.manual_value !== null) return { price: null, value: pos.manual_value, pnl: null, pnlPct: null };
@@ -160,13 +469,44 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   async function handleSaved() { await reloadPositions(); fetchQuotes(true); }
 
   // F3: PEA objective gauge
+  // Sur PEA, le plafond (généralement 150k€) porte sur les versements cumulés,
+  // pas sur la valeur de marché. On préfère peaDeposits (saisi), puis cost_basis
+  // (approx), et en dernier recours totalValue (ancien comportement). Pour les
+  // non-PEA, la jauge reste basée sur totalValue vs target.
+  const isPea = envelope.type === "pea";
+  const gaugeBase = isPea
+    ? (peaDeposits ?? (envelopeCostBasis > 0 ? envelopeCostBasis : totalValue))
+    : totalValue;
   const showGauge = envelope.target && envelope.target > 0;
-  const gaugePct = showGauge ? Math.min(100, (totalValue / envelope.target!) * 100) : 0;
+  const gaugePct = showGauge ? Math.min(100, (gaugeBase / envelope.target!) * 100) : 0;
   const currentYear = new Date().getFullYear();
   const monthsLeft = envelope.fill_end_year ? Math.max(0, (envelope.fill_end_year - currentYear) * 12 + (12 - new Date().getMonth() - 1)) : 0;
-  const monthlyNeeded = showGauge && monthsLeft > 0 ? Math.max(0, (envelope.target! - totalValue) / monthsLeft) : 0;
+  const monthlyNeeded = showGauge && monthsLeft > 0 ? Math.max(0, (envelope.target! - gaugeBase) / monthsLeft) : 0;
 
   const pnlColor = (pnl: number | null) => pnl === null ? "text-gray-500" : pnl >= 0 ? "text-emerald-400" : "text-red-400";
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = positions.findIndex((p) => p.id === active.id);
+    const newIndex = positions.findIndex((p) => p.id === over.id);
+    const reordered = arrayMove(positions, oldIndex, newIndex);
+    setPositions(reordered);
+
+    // Persist new order
+    const order = reordered.map((p, i) => ({ id: p.id, sort_order: i }));
+    await fetch("/api/positions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order }),
+    });
+  }
 
   return (
     <main className="min-h-screen bg-[#080c14] p-4 md:p-8">
@@ -196,6 +536,15 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                   <span className="text-xs ml-1">({envelopePnl >= 0 ? "+" : ""}{envelopePnlPct.toFixed(1)}%)</span>
                 </p>
               )}
+              {returns && (() => {
+                const row = returns.envelopes.find((r) => r.envelope_id === envelope.id);
+                if (!row) return null;
+                return (
+                  <div className="mt-0.5">
+                    <TriBadge tri={row.tri_annual} cashflowCount={row.cashflow_count} coverage={row.coverage} />
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex flex-col items-end gap-1">
               <Button variant="outline" size="sm" onClick={() => fetchQuotes(true)} disabled={loading}
@@ -217,7 +566,12 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
           <Card className="bg-[#0d1117] border-gray-800">
             <CardContent className="pt-4 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">Objectif : <span className="text-white font-[family-name:var(--font-jetbrains)]">{formatEur(envelope.target!)}</span></span>
+                <span className="text-gray-400">
+                  {isPea ? "Versés : " : "Actuel : "}
+                  <span className="text-white font-[family-name:var(--font-jetbrains)]">{formatEur(gaugeBase)}</span>
+                  <span className="text-gray-600 mx-1">/</span>
+                  <span className="text-white font-[family-name:var(--font-jetbrains)]">{formatEur(envelope.target!)}</span>
+                </span>
                 <span className="text-gray-400 font-[family-name:var(--font-jetbrains)]">{gaugePct.toFixed(1)}%</span>
               </div>
               <Progress value={gaugePct} className="h-2.5 bg-gray-800" style={{ ["--progress-foreground" as string]: envelope.color } as React.CSSProperties} />
@@ -227,6 +581,11 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                 )}
                 {monthlyNeeded > 0 && (
                   <span>Versement requis : <span className="text-gray-300 font-[family-name:var(--font-jetbrains)]">{formatEur(monthlyNeeded)}/mois</span></span>
+                )}
+                {isPea && peaDeposits === null && (
+                  <span className="text-amber-500/80" title="Renseigne tes versements cumulés PEA dans le profil fiscal pour une jauge exacte. En attendant, on utilise le cost basis comme approximation.">
+                    ⚠ Versements estimés via cost basis — renseigne le profil fiscal
+                  </span>
                 )}
               </div>
             </CardContent>
@@ -243,6 +602,9 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
           </Card>
         )}
 
+        {/* Envelope-level historical chart */}
+        <EnvelopeChartPanel envelopeId={envelope.id} color={envelope.color} />
+
         {/* Positions Table */}
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -251,166 +613,53 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
           </CardHeader>
           <Separator className="bg-gray-800" />
           <CardContent className="pt-4 space-y-3">
-            {enriched.map((pos) => {
-              const sym = pos.currency === "USD" ? "$" : "€";
-              const isExpanded = expandedId === pos.id;
-              const costBasis = pos.quantity && pos.pru ? pos.quantity * pos.pru : null;
-              const costBasisEur = costBasis !== null && pos.currency === "USD" ? costBasis / (quotes?.eurUsd ?? 1.08) : costBasis;
-              const variationPct = pos.price !== null && pos.pru ? ((pos.price - pos.pru) / pos.pru) * 100 : null;
-
-              return (
-                <div key={pos.id} className={`bg-[#161b22] rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? "ring-1 ring-gray-700" : "hover:ring-1 hover:ring-gray-800"}`}>
-                  {/* Main row — clickable to expand */}
-                  <div
-                    className="p-3 sm:p-4 cursor-pointer hover:bg-[#1c2333] transition-colors"
-                    onClick={() => setExpandedId(isExpanded ? null : pos.id)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white shrink-0">{pos.ticker}</span>
-                        <span className="text-sm text-gray-400 truncate hidden sm:inline">{pos.label}</span>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right">
-                          <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white">
-                            {formatEur(pos.value)}
-                          </span>
-                          {pos.pnl !== null ? (
-                            <p className={`font-[family-name:var(--font-jetbrains)] text-xs ${pnlColor(pos.pnl)}`}>
-                              {pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnlPct !== null ? (pos.pnlPct >= 0 ? "+" : "") + pos.pnlPct.toFixed(1) + "%" : ""})
-                            </p>
-                          ) : pos.manual_value === null ? (
-                            <p className="text-[10px] text-gray-600">P&amp;L en attente</p>
-                          ) : null}
-                        </div>
-                        <span className={`text-gray-500 text-xs transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>&#9660;</span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 truncate mt-1 sm:hidden">{pos.label}</p>
-                  </div>
-
-                  {/* Expanded detail panel with animation */}
-                  <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-                    <div className="overflow-hidden">
-                    <div className="border-t border-gray-800 bg-[#0d1117]">
-                      <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                        {/* Quantité */}
-                        {pos.quantity !== null && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Quantité</p>
-                            <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
-                              {pos.quantity.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* PRU */}
-                        {pos.pru !== null && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Prix de revient (PRU)</p>
-                            <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
-                              {pos.pru.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {sym}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Cours actuel */}
-                        {pos.price !== null && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Cours actuel</p>
-                            <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
-                              {pos.price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {sym}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Variation depuis PRU */}
-                        {variationPct !== null && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Variation / PRU</p>
-                            <p className={`font-[family-name:var(--font-jetbrains)] text-sm font-medium ${variationPct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              {variationPct >= 0 ? "+" : ""}{variationPct.toFixed(2)}%
-                              <span className="text-xs text-gray-500 ml-1">
-                                ({pos.price !== null && pos.pru ? (pos.price >= pos.pru ? "+" : "") + (pos.price - pos.pru).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + sym : ""})
-                              </span>
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Coût d'acquisition */}
-                        {costBasisEur !== null && (
-                          <div>
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Coût d&apos;acquisition</p>
-                            <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-300">
-                              {formatEur(costBasisEur)}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* P&L — replaces "Valeur actuelle" since it's already in the card header */}
-                        <div className={`${pos.pnl !== null ? "col-span-2" : ""}`}>
-                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">P&amp;L (B&eacute;n&eacute;fice / Perte)</p>
-                          {pos.pnl !== null ? (
-                            <div className="flex items-baseline gap-3">
-                              <p className={`font-[family-name:var(--font-jetbrains)] text-lg font-bold ${pnlColor(pos.pnl)}`}>
-                                {pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}
-                              </p>
-                              <span className={`font-[family-name:var(--font-jetbrains)] text-sm font-medium px-2 py-0.5 rounded ${
-                                pos.pnl >= 0 ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"
-                              }`}>
-                                {pos.pnlPct !== null ? (pos.pnlPct >= 0 ? "+" : "") + pos.pnlPct.toFixed(2) + "%" : ""}
-                              </span>
-                            </div>
-                          ) : (
-                            <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-500">
-                              {pos.manual_value !== null ? "N/A (fonds non coté)" : "En attente des cours..."}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Poids */}
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Poids dans l&apos;enveloppe</p>
-                          <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-300">
-                            {totalValue > 0 ? ((pos.value / totalValue) * 100).toFixed(1) + "%" : "—"}
-                          </p>
-                        </div>
-
-                        {/* Valeur manuelle info */}
-                        {pos.manual_value !== null && (
-                          <div className="col-span-2 sm:col-span-4">
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Type</p>
-                            <p className="text-xs text-gray-400">Valeur saisie manuellement (fonds non coté)</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="px-4 pb-3 flex justify-end gap-2 border-t border-gray-800 pt-3">
-                        {pos.quantity !== null && (
-                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setBuyTarget(pos); setBuyQty(""); setBuyPrice(""); }}
-                            className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 h-7 px-3 text-xs">
-                            + Achat
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleEdit(pos); }}
-                          className="text-gray-400 hover:text-white hover:bg-[#1f2937] h-7 px-3 text-xs">
-                          Modifier
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteTarget(pos); }}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-7 px-3 text-xs">
-                          Supprimer
-                        </Button>
-                      </div>
-                    </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={enriched.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {enriched.map((pos) => (
+                  <SortablePositionCard
+                    key={pos.id}
+                    pos={pos}
+                    isExpanded={expandedId === pos.id}
+                    onToggle={() => setExpandedId(expandedId === pos.id ? null : pos.id)}
+                    quotes={quotes}
+                    totalValue={totalValue}
+                    pnlColor={pnlColor}
+                    onBuy={(p) => { setBuyTarget(p); setBuyQty(""); setBuyPrice(""); }}
+                    onEdit={handleEdit}
+                    onDelete={setDeleteTarget}
+                    triRow={(() => {
+                      const r = returns?.positions.find((rp) => rp.position_id === pos.id);
+                      if (!r) return null;
+                      return {
+                        tri_annual: r.tri_annual,
+                        cashflow_count: r.cashflow_count,
+                        coverage: r.coverage,
+                      };
+                    })()}
+                    triggeredCount={triggeredByPosition.get(pos.id) ?? 0}
+                    onAlertsChanged={reloadAlerts}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
             {enriched.length === 0 && (
               <div className="text-center text-gray-500 py-8">Aucune position.</div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* LOT 1 — Operations journal */}
+        <Card className="bg-[#0d1117] border-gray-800">
+          <CardContent className="pt-5 pb-5">
+            <OperationsTimeline
+              envelopeId={envelope.id}
+              positions={positions.map((p) => ({
+                id: p.id,
+                ticker: p.ticker,
+                label: p.label,
+                currency: p.currency,
+              }))}
+            />
           </CardContent>
         </Card>
       </div>

@@ -1,0 +1,18 @@
+{
+  "name": "patrimoine-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing the patrimoine dashboard as tools for Claude agents.",
+  "type": "module",
+  "bin": {
+    "patrimoine-mcp": "./index.mjs"
+  },
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -3,12 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page, auth API, Google OAuth callback, and debug
+  // Allow login page, auth API, Google OAuth callback, debug, cron jobs,
+  // and MCP data endpoints (both carry their own bearer-token check).
   if (
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/google") ||
-    pathname.startsWith("/api/debug-env")
+    pathname.startsWith("/api/debug-env") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/mcp")
   ) {
     return NextResponse.next();
   }

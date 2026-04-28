@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,12 @@ export async function GET(request: NextRequest) {
       .select()
       .from(schema.positions)
       .where(eq(schema.positions.envelope_id, envelopeId))
+      .orderBy(asc(schema.positions.sort_order))
       .all();
     return NextResponse.json(positions);
   }
 
-  const positions = await db.select().from(schema.positions).all();
+  const positions = await db.select().from(schema.positions).orderBy(asc(schema.positions.sort_order)).all();
   return NextResponse.json(positions);
 }
 
@@ -76,6 +77,21 @@ export async function PUT(request: NextRequest) {
     .get();
 
   return NextResponse.json(result);
+}
+
+// PATCH — reorder positions (batch update sort_order)
+export async function PATCH(request: NextRequest) {
+  const body: { order: { id: number; sort_order: number }[] } = await request.json();
+  if (!body.order?.length) {
+    return NextResponse.json({ error: "order array is required" }, { status: 400 });
+  }
+  for (const item of body.order) {
+    await db.update(schema.positions)
+      .set({ sort_order: item.sort_order })
+      .where(eq(schema.positions.id, item.id))
+      .run();
+  }
+  return NextResponse.json({ success: true });
 }
 
 // DELETE a position

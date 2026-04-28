@@ -59,6 +59,7 @@ const ASSET_LABELS: Record<string, string> = {
   nq: "Nasdaq-100",
   tech: "Tech/Growth",
   energy: "Énergie",
+  crypto: "Crypto",
   fg: "Fonds garanti",
   fe: "Fonds euros",
   cash: "Cash",
@@ -142,6 +143,15 @@ export default function ProjectionsClient({
     return pos.currency === "USD" ? fallback / eurUsd : fallback;
   }
 
+  // Cost basis EUR pour une position (fallback propre pour les versements
+  // cumulés PEA en l'absence de peaVersements saisi).
+  function posCostBasis(pos: Position): number {
+    if (!pos.quantity || !pos.pru) return 0;
+    const eurUsd = quotes?.eurUsd ?? 1.08;
+    const raw = pos.quantity * pos.pru;
+    return pos.currency === "USD" ? raw / eurUsd : raw;
+  }
+
   // Build simulation input
   const simInput = useMemo<SimulationInput>(() => {
     const maxHorizon = Math.max(...HORIZONS);
@@ -162,6 +172,35 @@ export default function ProjectionsClient({
         currentValue
       );
 
+      // PEA cap : on injecte les versements cumulés.
+      // Priorité 1 : valeur saisie dans le profil fiscal (userParams.peaVersements).
+      // Priorité 2 : somme des cost basis (approxime les dépôts si pas de divs
+      //             réinvestis non-tracés). Plus précis que le fallback
+      //             "currentValue" de simulation.ts qui comptait la PV latente.
+      // Priorité 3 (dans sim.ts) : currentValue.
+      const peaVersementsRaw = initialUserParams.peaVersements;
+      const peaVersementsCumules = peaVersementsRaw
+        ? parseFloat(peaVersementsRaw)
+        : null;
+      const peaFallbackFromCostBasis =
+        env.type === "pea"
+          ? envPositions.reduce((sum, p) => sum + posCostBasis(p), 0)
+          : 0;
+      const versementsCumulesEur =
+        env.type === "pea"
+          ? (peaVersementsCumules ?? (peaFallbackFromCostBasis > 0 ? peaFallbackFromCostBasis : undefined))
+          : undefined;
+      // Capital investi initial : cost basis des positions PRU + manual_value
+      // des positions non-cotées (fonds euros). Livrets exclus (épargne, pas
+      // investi). Utilisé pour la série invested[] — évite le saut 79k → 273k
+      // qu'on avait quand on partait de currentValue (qui inclut les PV latentes).
+      const initialInvestedEur =
+        env.type === "livrets"
+          ? 0
+          : envPositions.reduce((sum, p) => {
+              if (p.manual_value !== null) return sum + p.manual_value;
+              return sum + posCostBasis(p);
+            }, 0);
       return {
         id: env.id,
         name: env.name,
@@ -172,6 +211,8 @@ export default function ProjectionsClient({
         fill_end_year: env.fill_end_year,
         annual_contrib: env.id === "per" ? perContrib : env.annual_contrib,
         returns,
+        versements_cumules_eur: versementsCumulesEur,
+        initial_invested_eur: initialInvestedEur,
       };
     });
 
@@ -187,14 +228,23 @@ export default function ProjectionsClient({
   const results = useMemo(() => runSimulation(simInput), [simInput]);
 
   // Compute current invested capital and plus-value
+  // Exclude livrets d'épargne from invested/P&L (they are savings, not investments)
   const { totalValue, investedCapital, plusValue, plusValuePct } = useMemo(() => {
     const eurUsd = quotes?.eurUsd ?? 1.08;
+    const livretEnvelopeIds = new Set(
+      envelopes.filter((e) => e.type === "livrets").map((e) => e.id)
+    );
     let total = 0;
-    let invested = 0;
+    let investedTotal = 0;
+    let marketTotal = 0;
     for (const pos of positions) {
+      const isLivret = livretEnvelopeIds.has(pos.envelope_id);
       if (pos.manual_value !== null) {
         total += pos.manual_value;
-        invested += pos.manual_value; // manual = no P&L distinction
+        if (!isLivret) {
+          investedTotal += pos.manual_value;
+          marketTotal += pos.manual_value;
+        }
         continue;
       }
       if (!pos.quantity || !pos.pru) continue;
@@ -211,12 +261,15 @@ export default function ProjectionsClient({
         ? (pos.quantity * pos.pru) / eurUsd
         : pos.quantity * pos.pru;
       total += currentVal;
-      invested += costBasis;
+      if (!isLivret) {
+        investedTotal += costBasis;
+        marketTotal += currentVal;
+      }
     }
-    const pv = total - invested;
-    const pvPct = invested > 0 ? (pv / invested) * 100 : 0;
-    return { totalValue: total, investedCapital: invested, plusValue: pv, plusValuePct: pvPct };
-  }, [positions, quotes]);
+    const pv = marketTotal - investedTotal;
+    const pvPct = investedTotal > 0 ? (pv / investedTotal) * 100 : 0;
+    return { totalValue: total, investedCapital: investedTotal, plusValue: pv, plusValuePct: pvPct };
+  }, [positions, quotes, envelopes]);
 
   // R11: Auto-save params with debounce
   const autoSave = useCallback(async () => {

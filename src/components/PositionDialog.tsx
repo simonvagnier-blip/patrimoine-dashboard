@@ -14,6 +14,7 @@ const SCENARIO_OPTIONS_QUOTED = [
   { value: "nq", label: "Nasdaq-100" },
   { value: "tech", label: "Tech/Growth" },
   { value: "energy", label: "Énergie" },
+  { value: "crypto", label: "Crypto" },
 ];
 
 const SCENARIO_OPTIONS_MANUAL = [

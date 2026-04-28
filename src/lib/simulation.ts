@@ -25,11 +25,31 @@ export interface SimulationInput {
     annual_contrib: number | null;
     // Weighted annual return per scenario
     returns: { p: number; m: number; o: number };
+    // LOT 6 — Optionnels what-if. `extra_monthly` s'ajoute à toute autre
+    // contribution déjà calculée (PEA fill / PER annuel) ; `initial_boost`
+    // bumpe la currentValue au temps zéro (utile pour "et si je transfère X€
+    // d'un livret vers cette enveloppe").
+    extra_monthly?: number;
+    initial_boost?: number;
+    // Versements déjà effectués (pour respecter le plafond légal sur PEA :
+    // 150k€ cumulés). Si non fourni pour un PEA, on assume `currentValue`
+    // comme proxy (approximation prudente).
+    versements_cumules_eur?: number;
+    // Capital réellement investi dans cette enveloppe (cost basis + manual
+    // values, SANS plus-values latentes). Utilisé pour la série `invested[y]`
+    // afin qu'elle représente "ce que tu as mis", pas "valeur marché". Les
+    // livrets d'épargne passent 0 (épargne, pas investissement). Si absent,
+    // fallback `currentValue` (ancien comportement, à éviter : gonfle
+    // l'investi en comptant les PV latentes).
+    initial_invested_eur?: number;
   }[];
   currentAge: number;
   retireAge: number;
   horizonYears: number;
 }
+
+// Plafond légal PEA — versements cumulés (lifetime)
+export const PEA_DEPOSIT_CAP = 150_000;
 
 export function runSimulation(input: SimulationInput): ScenarioResult[] {
   const scenarios: Array<{ key: "p" | "m" | "o"; label: string }> = [
@@ -47,40 +67,82 @@ export function runSimulation(input: SimulationInput): ScenarioResult[] {
         const annualReturn = env.returns[key] / 100;
         const monthlyReturn = Math.pow(1 + annualReturn, 1 / 12) - 1;
 
-        let value = env.currentValue;
+        // ───── Plafond PEA (versements cumulés lifetime) ─────
+        // On démarre avec les versements déjà faits (fournis par le caller
+        // depuis le profil fiscal). Pour les non-PEA, on n'utilise pas ce
+        // tracker.
+        const isPea = env.type === "pea";
+        let peaCumDeposits = isPea
+          ? (env.versements_cumules_eur ?? env.currentValue)
+          : 0;
+        // Capacité initiale restante avant le boost
+        const peaRoomInitial = isPea
+          ? Math.max(0, PEA_DEPOSIT_CAP - peaCumDeposits)
+          : Infinity;
+        // Le boost initial est cappé pour PEA
+        const initialBoostRaw = env.initial_boost ?? 0;
+        const initialBoostApplied = isPea
+          ? Math.min(initialBoostRaw, peaRoomInitial)
+          : initialBoostRaw;
+        if (isPea) peaCumDeposits += initialBoostApplied;
+
+        let value = env.currentValue + initialBoostApplied;
         const yearValues: number[] = [value];
 
         for (let year = 1; year <= years; year++) {
           const projYear = currentYear + year;
 
           for (let month = 0; month < 12; month++) {
-            // Apply monthly growth
+            // Croissance mensuelle (capitalisation)
             value *= 1 + monthlyReturn;
 
-            // Add contributions
-            if (env.type === "pea" && env.target && env.fill_end_year) {
-              // PEA: monthly contributions until fill_end_year
+            // Aide locale : combien on peut encore verser (PEA only)
+            const peaRoom = () =>
+              isPea ? Math.max(0, PEA_DEPOSIT_CAP - peaCumDeposits) : Infinity;
+
+            // ── PEA fill ──
+            if (isPea && env.target && env.fill_end_year) {
               if (projYear <= env.fill_end_year) {
-                // ~5400/month to reach 150k by end of 2027
-                const monthsLeft =
-                  (env.fill_end_year - currentYear) * 12;
+                // monthsLeft aligné sur FillTargetWidget : compte les mois
+                // restants depuis le mois courant jusqu'à décembre de
+                // fill_end_year. Évite de saturer le plafond en année 1
+                // quand la fenêtre réelle couvre plusieurs années civiles.
+                const now = new Date();
+                const monthsLeft = Math.max(
+                  0,
+                  (env.fill_end_year - currentYear) * 12 + (11 - now.getMonth())
+                );
                 const remaining = Math.max(
                   0,
-                  (env.target ?? 150000) - env.currentValue
+                  (env.target ?? PEA_DEPOSIT_CAP) - env.currentValue
                 );
-                const monthlyContrib =
+                const wantContrib =
                   monthsLeft > 0 ? remaining / monthsLeft : 0;
-                value += monthlyContrib;
+                const actual = Math.min(wantContrib, peaRoom());
+                value += actual;
+                peaCumDeposits += actual;
               }
             } else if (
               env.type === "per" &&
               env.annual_contrib &&
               input.currentAge + year <= input.retireAge
             ) {
-              // PER: annual contribution spread monthly until retirement
+              // PER : contribution annuelle mensualisée jusqu'à la retraite
               value += env.annual_contrib / 12;
             }
-            // AV and CTO: no regular contributions
+            // AV et CTO : pas de contribution programmée par défaut
+
+            // LOT 6 — apport mensuel additionnel (what-if), s'ajoute. Cappé
+            // pour PEA selon les versements restants.
+            if (env.extra_monthly && env.extra_monthly > 0) {
+              if (isPea) {
+                const actual = Math.min(env.extra_monthly, peaRoom());
+                value += actual;
+                peaCumDeposits += actual;
+              } else {
+                value += env.extra_monthly;
+              }
+            }
           }
 
           yearValues.push(value);
@@ -107,28 +169,66 @@ export function runSimulation(input: SimulationInput): ScenarioResult[] {
         total += envelopeProjections[i].values[y];
 
         const env = input.envelopes[i];
-        let envInvested = env.currentValue;
-        const projYear = currentYear + y;
+        const isPea = env.type === "pea";
 
-        if (env.type === "pea" && env.target && env.fill_end_year) {
-          const monthsLeft =
-            (env.fill_end_year - currentYear) * 12;
-          const remaining = Math.max(0, (env.target ?? 150000) - env.currentValue);
-          const monthlyContrib = monthsLeft > 0 ? remaining / monthsLeft : 0;
-          const monthsContrib = Math.min(
-            y * 12,
-            Math.max(0, (env.fill_end_year - currentYear) * 12)
+        // Capacité PEA restante (versements lifetime cappés à 150k€)
+        const peaInitialDeposits = isPea
+          ? (env.versements_cumules_eur ?? env.currentValue)
+          : 0;
+        const peaRoomInitial = isPea
+          ? Math.max(0, PEA_DEPOSIT_CAP - peaInitialDeposits)
+          : Infinity;
+        const initialBoostRaw = env.initial_boost ?? 0;
+        const initialBoostApplied = isPea
+          ? Math.min(initialBoostRaw, peaRoomInitial)
+          : initialBoostRaw;
+        let usedRoom = isPea ? initialBoostApplied : 0;
+
+        // Base : capital réellement investi (cost basis) + boost. Les PV
+        // latentes ne sont PAS comptées (elles apparaissent dans `total[]`,
+        // pas dans `invested[]`).
+        const initialInvested = env.initial_invested_eur ?? env.currentValue;
+        let envInvested = initialInvested + initialBoostApplied;
+
+        if (isPea && env.target && env.fill_end_year) {
+          // Mois restants jusqu'à décembre de fill_end_year (inclus) à partir
+          // du mois en cours. Aligné sur la logique de FillTargetWidget pour
+          // cohérence UI/sim. Avant : (fill_end_year - currentYear) × 12, qui
+          // ignorait le mois courant et faisait injecter 12 mois d'apports
+          // sur "l'année 1" alors que la vraie fenêtre peut être plus longue.
+          const now = new Date();
+          const monthsLeft = Math.max(
+            0,
+            (env.fill_end_year - currentYear) * 12 + (11 - now.getMonth())
           );
-          envInvested += monthlyContrib * monthsContrib;
-        } else if (
-          env.type === "per" &&
-          env.annual_contrib
-        ) {
+          const remaining = Math.max(
+            0,
+            (env.target ?? PEA_DEPOSIT_CAP) - env.currentValue
+          );
+          const monthlyContrib = monthsLeft > 0 ? remaining / monthsLeft : 0;
+          const monthsContrib = Math.min(y * 12, monthsLeft);
+          const wantedAdded = monthlyContrib * monthsContrib;
+          const allowed = Math.min(wantedAdded, peaRoomInitial - usedRoom);
+          envInvested += allowed;
+          usedRoom += allowed;
+        } else if (env.type === "per" && env.annual_contrib) {
           const yearsContrib = Math.min(
             y,
             Math.max(0, input.retireAge - input.currentAge)
           );
           envInvested += env.annual_contrib * yearsContrib;
+        }
+
+        // What-if : apports mensuels additionnels (cappés pour PEA)
+        if (env.extra_monthly && env.extra_monthly > 0) {
+          const wanted = env.extra_monthly * 12 * y;
+          if (isPea) {
+            const allowed = Math.min(wanted, peaRoomInitial - usedRoom);
+            envInvested += allowed;
+            usedRoom += allowed;
+          } else {
+            envInvested += wanted;
+          }
         }
 
         inv += envInvested;
