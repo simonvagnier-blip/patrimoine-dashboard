@@ -212,7 +212,7 @@ const ENVELOPE_COLORS = [
 ];
 
 function SortableEnvelopeCard({
-  env, basePath, loading, hasQuotes, grandTotal, tri, triCashflowCount, deltas, realizedPnl = 0,
+  env, basePath, loading, hasQuotes, grandTotal, tri, triCashflowCount, deltas, realizedPnl = 0, hideAmounts = false,
 }: {
   env: { id: string; name: string; color: string; total: number; positionCount: number; pnl: number; pnlPct: number; hasPnl: boolean };
   basePath: string;
@@ -223,6 +223,7 @@ function SortableEnvelopeCard({
   triCashflowCount: number;
   deltas?: EnvelopeDeltas;
   realizedPnl?: number;
+  hideAmounts?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: env.id });
   const style = {
@@ -262,14 +263,18 @@ function SortableEnvelopeCard({
               <div className="h-7 w-24 bg-gray-800 rounded animate-pulse" />
             ) : (
               <>
-                <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: env.color }}>
-                  {formatEur(env.total)}
+                <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)] tabular-nums" style={{ color: env.color }}>
+                  {hideAmounts ? "•••• €" : formatEur(env.total)}
                 </p>
                 {hasQuotes && env.hasPnl && (
-                  <p className={`text-xs font-[family-name:var(--font-jetbrains)] mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
+                  <p className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
                     <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Latente</span>
-                    {env.pnl >= 0 ? "+" : ""}{formatEur(env.pnl)}
-                    <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
+                    {hideAmounts ? "••••" : (
+                      <>
+                        {env.pnl >= 0 ? "+" : ""}{formatEur(env.pnl)}
+                        <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
+                      </>
+                    )}
                   </p>
                 )}
                 {/* Perf 1J/7J/30J calculée depuis les snapshots quotidiens.
@@ -300,7 +305,7 @@ function SortableEnvelopeCard({
                 {hasQuotes && realizedPnl !== 0 && (
                   <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis">
                     <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Réalisée</span>
-                    {realizedPnl >= 0 ? "+" : ""}{formatEur(realizedPnl)}
+                    {hideAmounts ? "••••" : `${realizedPnl >= 0 ? "+" : ""}${formatEur(realizedPnl)}`}
                   </p>
                 )}
                 {hasQuotes && triCashflowCount > 0 && (
@@ -341,6 +346,9 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   const [lastUpdate, setLastUpdate] = useState("");
   const [envelopeFilter, setEnvelopeFilter] = useState<string | null>(null);
   const [quotesError, setQuotesError] = useState(false);
+  // Mode discret : masque les montants (persisté en localStorage).
+  const [hideAmounts, setHideAmounts] = useState(false);
+  const maskEur = (v: number) => (hideAmounts ? "•••• €" : formatEur(v));
   // F1: History
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [operations, setOperations] = useState<OperationRow[]>([]);
@@ -454,6 +462,18 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   }, [quotes]);
 
   useEffect(() => { fetchQuotes(); }, [fetchQuotes]);
+
+  // Mode discret : charge la préférence au montage, persiste à chaque bascule.
+  useEffect(() => {
+    try { setHideAmounts(localStorage.getItem("hideAmounts") === "1"); } catch {}
+  }, []);
+  function toggleHideAmounts() {
+    setHideAmounts((v) => {
+      const nv = !v;
+      try { localStorage.setItem("hideAmounts", nv ? "1" : "0"); } catch {}
+      return nv;
+    });
+  }
 
   const enrichedPositions = positions.map((pos) => {
     const computed = computePositionValue(pos, quotes);
@@ -612,11 +632,25 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           <div>
             <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Patrimoine · Vue consolidée</p>
             {loading && !hasQuotes ? (
-              <div className="h-12 w-60 bg-gray-800 rounded animate-pulse mt-2" />
+              <div className="h-10 w-52 bg-gray-800 rounded animate-pulse mt-2" />
             ) : (
-              <p className="text-4xl sm:text-5xl font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums leading-none mt-2">
-                {formatEur(grandTotal)}
-              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <p className="text-3xl sm:text-4xl font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums leading-none">
+                  {hideAmounts ? "•• ••• €" : formatEur(grandTotal)}
+                </p>
+                <button
+                  onClick={toggleHideAmounts}
+                  aria-label={hideAmounts ? "Afficher les montants" : "Masquer les montants"}
+                  title={hideAmounts ? "Afficher les montants" : "Masquer les montants"}
+                  className="text-gray-600 hover:text-gray-300 transition-colors p-1 shrink-0"
+                >
+                  {hideAmounts ? (
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                  ) : (
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
             )}
             {hasQuotes && (
               <>
@@ -625,19 +659,24 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   className={`text-base font-[family-name:var(--font-jetbrains)] tabular-nums mt-2 ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
                   title="Plus-value latente (non réalisée) sur tes positions cotées — hors livrets"
                 >
-                  {totalPnl >= 0 ? "▲" : "▼"} {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
-                  <span className="text-sm ml-1 opacity-80">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
+                  {totalPnl >= 0 ? "▲" : "▼"}{" "}
+                  {hideAmounts ? "••••" : (
+                    <>
+                      {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
+                      <span className="text-sm ml-1 opacity-80">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
+                    </>
+                  )}
                 </p>
                 {/* Ligne secondaire : Investi · Réalisée · TRI */}
                 <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-[family-name:var(--font-jetbrains)] tabular-nums text-gray-500 mt-1.5">
                   {totalCostBasis > 0 && (
-                    <span>Investi <span className="text-gray-400">{formatEur(totalCostBasis)}</span></span>
+                    <span>Investi <span className="text-gray-400">{maskEur(totalCostBasis)}</span></span>
                   )}
                   {returns && returns.global.realized_pnl_eur !== 0 && (
                     <>
                       <span className="text-gray-700">·</span>
                       <span title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis du patrimoine">
-                        Réalisée <span className="text-emerald-400">{returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}</span>
+                        Réalisée <span className="text-emerald-400">{hideAmounts ? "••••" : `${returns.global.realized_pnl_eur >= 0 ? "+" : ""}${formatEur(returns.global.realized_pnl_eur)}`}</span>
                       </span>
                     </>
                   )}
@@ -698,7 +737,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         <AlertsBanner />
 
         {/* Pièce maîtresse : grande courbe d'évolution du patrimoine */}
-        {hasQuotes && history.length > 1 && <NetWorthChart history={history} />}
+        {hasQuotes && history.length > 1 && <NetWorthChart history={history} hideAmounts={hideAmounts} />}
 
         {/* Barre de KPIs (dividendes / épargne / deltas) — sparkline retirée */}
         {hasQuotes && (
@@ -742,6 +781,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   triCashflowCount={returns?.envelopes.find((r) => r.envelope_id === env.id)?.cashflow_count ?? 0}
                   deltas={env.deltas}
                   realizedPnl={returns?.envelopes.find((r) => r.envelope_id === env.id)?.realized_pnl_eur ?? 0}
+                  hideAmounts={hideAmounts}
                 />
               ))}
               {/* Add envelope button */}

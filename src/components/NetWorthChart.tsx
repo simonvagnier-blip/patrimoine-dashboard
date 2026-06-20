@@ -34,7 +34,7 @@ function eur(v: number, d = 0): string {
   return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d });
 }
 
-export default function NetWorthChart({ history }: { history: Snap[] }) {
+export default function NetWorthChart({ history, hideAmounts = false }: { history: Snap[]; hideAmounts?: boolean }) {
   const [period, setPeriod] = useState("3M");
 
   const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
@@ -67,7 +67,7 @@ export default function NetWorthChart({ history }: { history: Snap[] }) {
             <p className="text-sm text-gray-200">Patrimoine total</p>
             {data.length > 1 && (
               <span className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums ${up ? "text-emerald-400" : "text-red-400"}`}>
-                {up ? "▲" : "▼"} {up ? "+" : ""}{eur(change)} ({up ? "+" : ""}{changePct.toFixed(1)}%)
+                {up ? "▲" : "▼"} {hideAmounts ? "••••" : `${up ? "+" : ""}${eur(change)} (${up ? "+" : ""}${changePct.toFixed(1)}%)`}
               </span>
             )}
           </div>
@@ -118,7 +118,7 @@ export default function NetWorthChart({ history }: { history: Snap[] }) {
               }}
               labelStyle={{ color: "#9ca3af" }}
               labelFormatter={(d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
-              formatter={(v) => [eur(Number(v)), "Patrimoine"]}
+              formatter={(v) => [hideAmounts ? "••••" : eur(Number(v)), "Patrimoine"]}
             />
             <Area
               type="monotone"
