@@ -18,6 +18,7 @@ import { TriBadge } from "./TriBadge";
 import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
 import StatsBar from "./StatsBar";
+import NetWorthChart from "./NetWorthChart";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -416,7 +417,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
 
   // F1: Fetch history
   useEffect(() => {
-    fetch("/api/snapshots?days=90").then((r) => r.ok ? r.json() : []).then(setHistory).catch(() => {});
+    fetch("/api/snapshots?days=400").then((r) => r.ok ? r.json() : []).then(setHistory).catch(() => {});
     // Opérations (achats, dépôts, retraits…) sur les 31 derniers jours,
     // nécessaires pour calculer la perf marché pure 1J/7J/30J par enveloppe
     // (soustrait les contributions des deltas de valeur).
@@ -605,97 +606,81 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   return (
     <main className="min-h-screen bg-[#080c14] p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Header — un seul héros (le total) à gauche, actions à droite */}
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-6">
+          {/* Zone données */}
           <div>
-            <h1 className="text-3xl font-bold text-white">Patrimoine</h1>
-            <p className="text-gray-400 mt-1">Vue consolidée</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm text-gray-400">Total estimé</p>
-              {/* R6: Skeleton while loading */}
-              {loading && !hasQuotes ? (
-                <div className="h-9 w-36 bg-gray-800 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-3xl font-bold text-white font-[family-name:var(--font-jetbrains)]">
-                  {formatEur(grandTotal)}
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Patrimoine · Vue consolidée</p>
+            {loading && !hasQuotes ? (
+              <div className="h-12 w-60 bg-gray-800 rounded animate-pulse mt-2" />
+            ) : (
+              <p className="text-4xl sm:text-5xl font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums leading-none mt-2">
+                {formatEur(grandTotal)}
+              </p>
+            )}
+            {hasQuotes && (
+              <>
+                {/* Plus-value LATENTE (non réalisée) — signe par chevron + couleur */}
+                <p
+                  className={`text-base font-[family-name:var(--font-jetbrains)] tabular-nums mt-2 ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                  title="Plus-value latente (non réalisée) sur tes positions cotées — hors livrets"
+                >
+                  {totalPnl >= 0 ? "▲" : "▼"} {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
+                  <span className="text-sm ml-1 opacity-80">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
                 </p>
-              )}
-              {/* R1: P&L global — distinction explicite LATENTE vs RÉALISÉE */}
-              {hasQuotes && (
-                <div className="mt-1 flex flex-col items-end gap-1">
-                  {/* Plus-value latente (non réalisée) sur les positions cotées */}
-                  <p
-                    className={`text-sm font-[family-name:var(--font-jetbrains)] ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
-                    title="Plus-value latente (non réalisée) sur tes positions cotées — hors livrets"
-                  >
-                    <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Latente</span>
-                    {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
-                    <span className="text-xs ml-1">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
-                  </p>
-                  {/* Ligne secondaire compacte : Investi · Réalisée · TRI */}
-                  <div className="flex items-center justify-end flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-[family-name:var(--font-jetbrains)]">
-                    {totalCostBasis > 0 && (
-                      <span className="text-gray-500">Investi <span className="text-gray-300">{formatEur(totalCostBasis)}</span></span>
-                    )}
-                    {returns && returns.global.realized_pnl_eur !== 0 && (
-                      <>
-                        <span className="text-gray-700">·</span>
-                        <span className="text-gray-500" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis du patrimoine">
-                          Réalisée <span className="text-emerald-400">{returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}</span>
-                        </span>
-                      </>
-                    )}
-                    {returns && (
-                      <>
-                        <span className="text-gray-700">·</span>
-                        <TriBadge
-                          tri={returns.global.tri_annual}
-                          cashflowCount={returns.global.cashflow_count}
-                          coverage={returns.global.coverage}
-                        />
-                      </>
-                    )}
-                  </div>
+                {/* Ligne secondaire : Investi · Réalisée · TRI */}
+                <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-[family-name:var(--font-jetbrains)] tabular-nums text-gray-500 mt-1.5">
+                  {totalCostBasis > 0 && (
+                    <span>Investi <span className="text-gray-400">{formatEur(totalCostBasis)}</span></span>
+                  )}
+                  {returns && returns.global.realized_pnl_eur !== 0 && (
+                    <>
+                      <span className="text-gray-700">·</span>
+                      <span title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis du patrimoine">
+                        Réalisée <span className="text-emerald-400">{returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}</span>
+                      </span>
+                    </>
+                  )}
+                  {returns && (
+                    <>
+                      <span className="text-gray-700">·</span>
+                      <TriBadge tri={returns.global.tri_annual} cashflowCount={returns.global.cashflow_count} coverage={returns.global.coverage} />
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex flex-wrap justify-end gap-2">
+              </>
+            )}
+          </div>
+          {/* Zone actions — 1 action primaire + secondaires discrets */}
+          <div className="flex flex-col items-start sm:items-end gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Button
+                size="sm"
+                onClick={() => fetchQuotes(true)}
+                disabled={loading}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white border-0"
+              >
+                {loading ? "Chargement..." : "Actualiser"}
+              </Button>
+              <div className="flex flex-wrap gap-0.5">
                 <Link href={`${basePath}/projections`}>
-                  <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white">
-                    Projections
-                  </Button>
+                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-[#161b22]">Projections</Button>
                 </Link>
                 <Link href={`${basePath}/what-if`}>
-                  <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white">
-                    What-if
-                  </Button>
+                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-[#161b22]">What-if</Button>
                 </Link>
                 <Link href={`${basePath}/fiscal`}>
-                  <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white">
-                    Fiscal
-                  </Button>
+                  <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-[#161b22]">Fiscal</Button>
                 </Link>
                 <ExportPDF grandTotal={grandTotal} envelopeData={envelopeData} positions={enrichedPositions} />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fetchQuotes(true)}
-                  disabled={loading}
-                  className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white"
-                >
-                  {loading ? "Chargement..." : "Actualiser"}
-                </Button>
               </div>
-              {lastUpdate && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-xs text-gray-500">MAJ {lastUpdate}</span>
-                </div>
-              )}
             </div>
+            {lastUpdate && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-xs text-gray-500">MAJ {lastUpdate}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -712,10 +697,12 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         {/* LOT 2: Alerts banner */}
         <AlertsBanner />
 
-        {/* Compact stats bar — consolide Dividendes, Épargne, Delta & sparkline */}
+        {/* Pièce maîtresse : grande courbe d'évolution du patrimoine */}
+        {hasQuotes && history.length > 1 && <NetWorthChart history={history} />}
+
+        {/* Barre de KPIs (dividendes / épargne / deltas) — sparkline retirée */}
         {hasQuotes && (
           <StatsBar
-            history={history}
             grandTotal={grandTotal}
             globalDeltas={globalDeltas}
             basePath={basePath}

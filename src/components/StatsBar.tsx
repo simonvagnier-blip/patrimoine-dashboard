@@ -2,24 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-} from "recharts";
 import type { DividendSummary } from "@/lib/dividends-types";
-
-interface Snapshot {
-  date: string;
-  total_value: number;
-  /**
-   * Capital investi à la date du snapshot (cost basis hors plus-values latentes).
-   * Permet de calculer la VRAIE PL = total - investi, et donc le delta de PL
-   * pure entre deux dates (sans le bruit des injections de capital).
-   */
-  invested_total?: number | null;
-}
 
 interface MiniSummary {
   averages: {
@@ -46,12 +29,10 @@ function eur(v: number, d = 0): string {
  * de données — la barre entière disparaît si tous les pills sont vides.
  */
 export default function StatsBar({
-  history,
   grandTotal,
   globalDeltas,
   basePath = "",
 }: {
-  history: Snapshot[];
   grandTotal: number;
   /**
    * Performance marché PURE agrégée sur 1J/7J/30J. Calculé en amont dans
@@ -96,9 +77,7 @@ export default function StatsBar({
     : [];
   const hasDelta = deltas.some((d) => d.data !== null);
 
-  const hasSparkline = history.length > 2;
-
-  if (!hasDividends && !hasSavings && !hasDelta && !hasSparkline) return null;
+  if (!hasDividends && !hasSavings && !hasDelta) return null;
 
   const budgetHref = `${basePath || "/perso"}/budget`;
 
@@ -193,33 +172,6 @@ export default function StatsBar({
           {pill}
         </Fragment>
       ))}
-      {hasSparkline && (
-        <div className="hidden sm:block ml-auto w-32 h-7 min-w-[100px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={history.map((s) => ({ date: s.date, value: s.total_value }))}
-            >
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#34d399"
-                strokeWidth={1.5}
-                dot={false}
-              />
-              <RTooltip
-                contentStyle={{
-                  backgroundColor: "#161b22",
-                  border: "1px solid #374151",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-                labelStyle={{ color: "#9ca3af" }}
-                formatter={(v) => [eur(Number(v)), "Total"]}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
     </div>
   );
 }
