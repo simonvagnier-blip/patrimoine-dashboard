@@ -496,6 +496,9 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   }, 0);
   const totalPnlPct = totalCostBasis > 0 ? (totalPnl / totalCostBasis) * 100 : 0;
   const hasQuotes = quotes !== null;
+  // Install vierge : aucune position dans aucune enveloppe → on affiche un
+  // onboarding plutôt qu'un dashboard de zéros (courbe/donut/table vides).
+  const noPositions = positions.length === 0;
 
   // F1: Save snapshot when quotes are loaded
   useEffect(() => {
@@ -723,6 +726,17 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         {/* LOT 2: Alerts banner */}
         <AlertsBanner />
 
+        {/* Onboarding install vierge — aucune position encore saisie */}
+        {hasQuotes && noPositions && (
+          <div className="bg-[#11161f] border border-gray-800 rounded-xl p-8 text-center">
+            <p className="text-lg font-semibold text-white">Bienvenue sur ton patrimoine</p>
+            <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto leading-relaxed">
+              Tout est prêt. Ajoute tes premières positions dans une enveloppe ci-dessous : la courbe d&apos;évolution, la répartition et les performances se rempliront automatiquement.
+            </p>
+            <p className="text-xs text-gray-500 mt-4">Clique sur une enveloppe pour commencer, ou « + Ajouter » pour en créer une.</p>
+          </div>
+        )}
+
         {/* Pièce maîtresse : grande courbe d'évolution du patrimoine */}
         {hasQuotes && history.length > 1 && <NetWorthChart history={history} hideAmounts={hideAmounts} />}
 
@@ -737,7 +751,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         )}
 
         {/* LOT 2: Fill-to-target widgets (PEA, etc.) */}
-        {hasQuotes && (
+        {hasQuotes && !noPositions && (
           <FillTargetWidget
             envelopes={envelopeData.map((e) => ({
               id: e.id,
@@ -785,7 +799,8 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           </DndContext>
         </div>
 
-        {/* Allocation Donut */}
+        {/* Allocation Donut — masqué sur install vierge (rien à répartir) */}
+        {!noPositions && (
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader>
             <CardTitle className="text-white">Répartition par classe d&apos;actifs</CardTitle>
@@ -794,8 +809,10 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             <AllocationDonut data={allocationData} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
+        )}
 
         {/* R9: Positions Table with filters */}
+        {!noPositions && (
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader>
             <CardTitle className="text-white">
@@ -834,6 +851,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             <PositionTable positions={filteredPositions} grandTotal={grandTotal} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* Create Envelope Dialog */}
