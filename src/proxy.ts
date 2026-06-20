@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifySessionToken } from "@/lib/session";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow login page, auth API, Google OAuth callback, debug, cron jobs,
@@ -19,9 +20,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for session cookie
-  const session = request.cookies.get("session_valid");
-  if (!session || session.value !== "true") {
+  // Vérifie le jeton de session SIGNÉ (HMAC). Un cookie posé à la main sans la
+  // clé secrète (DASHBOARD_PASSWORD) échoue la vérification → redirigé vers
+  // /login. fail-closed : si le secret n'est pas configuré, on refuse l'accès.
+  const token = request.cookies.get("session")?.value;
+  const secret = process.env.DASHBOARD_PASSWORD;
+  if (!secret || !(await verifySessionToken(token, secret))) {
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }

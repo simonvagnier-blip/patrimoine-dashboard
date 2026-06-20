@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import crypto from "crypto";
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
+import { createSessionToken, SESSION_TTL_MS } from "@/lib/session";
 
 export async function POST(request: NextRequest) {
   const { password } = await request.json();
@@ -21,25 +17,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Mot de passe incorrect" }, { status: 401 });
   }
 
-  const token = hashPassword(expected + Date.now().toString());
+  // Jeton de session SIGNÉ (HMAC) — le proxy le vérifie. Remplace l'ancien
+  // cookie `session_valid=true` statique qui était forgeable à la main.
+  const token = await createSessionToken(expected, SESSION_TTL_MS);
   const cookieStore = await cookies();
 
   cookieStore.set("session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: SESSION_TTL_MS / 1000, // en secondes
     path: "/",
   });
 
-  // Store the token so middleware can validate it
-  cookieStore.set("session_valid", "true", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-  });
+  // Nettoie l'ancien cookie forgeable s'il traîne encore côté navigateur.
+  cookieStore.set("session_valid", "", { maxAge: 0, path: "/" });
 
   return NextResponse.json({ success: true });
 }
