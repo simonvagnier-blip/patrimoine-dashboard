@@ -460,6 +460,8 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
     setHideAmounts((v) => {
       const nv = !v;
       try { localStorage.setItem("hideAmounts", nv ? "1" : "0"); } catch {}
+      // Cookie aussi → les pages serveur (home) rendent déjà masqué, sans flash.
+      try { document.cookie = `hideAmounts=${nv ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`; } catch {}
       return nv;
     });
   }
@@ -789,7 +791,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             <CardTitle className="text-white">Répartition par classe d&apos;actifs</CardTitle>
           </CardHeader>
           <CardContent>
-            <AllocationDonut data={allocationData} />
+            <AllocationDonut data={allocationData} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
 

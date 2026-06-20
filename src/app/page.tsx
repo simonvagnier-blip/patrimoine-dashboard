@@ -2,6 +2,7 @@ import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { loadPortfolioState } from "@/lib/portfolio-state";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -50,6 +51,9 @@ export default async function HomePage() {
   } catch (e) {
     console.warn("Failed to load portfolio state for home page", e);
   }
+
+  // Mode discret : cookie posé par le toggle de la page patrimoine.
+  const hideAmounts = (await cookies()).get("hideAmounts")?.value === "1";
 
   // Habits
   const activeHabits = habits.filter((h) => h.active && h.space === "perso");
@@ -178,7 +182,7 @@ export default async function HomePage() {
                 <CardContent className="p-4">
                   <p className="text-xs text-gray-400 mb-1">Patrimoine</p>
                   <p className="text-2xl font-bold text-emerald-400 font-[family-name:var(--font-jetbrains)]">
-                    {formatEur(patrimoineTotal)}
+                    {hideAmounts ? "•••• €" : formatEur(patrimoineTotal)}
                   </p>
                 </CardContent>
               </Card>

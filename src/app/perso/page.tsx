@@ -1,6 +1,7 @@
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -21,6 +22,9 @@ export default async function PersoHome() {
   const allSnapshots = await db.select().from(schema.snapshots).all();
   const latestSnapshot = allSnapshots.sort((a, b) => b.date.localeCompare(a.date))[0];
   const patrimoineTotal = latestSnapshot?.total_value ?? 0;
+
+  // Mode discret : cookie posé par le toggle de la page patrimoine.
+  const hideAmounts = (await cookies()).get("hideAmounts")?.value === "1";
 
   // Live envelope count — same source as /perso/patrimoine (all rows of schema.envelopes)
   const envelopeCount = (await db.select().from(schema.envelopes).all()).length;
@@ -105,7 +109,7 @@ export default async function PersoHome() {
                 </div>
                 <div className="text-right">
                   <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: businessEnv.color }}>
-                    {formatEur(businessValue)}
+                    {hideAmounts ? "•••• €" : formatEur(businessValue)}
                   </p>
                   <p className="text-[11px] text-amber-500/80">Voir le détail →</p>
                 </div>
@@ -120,7 +124,7 @@ export default async function PersoHome() {
             <Card className="bg-[#0d1117] border-gray-800 hover:border-emerald-800 transition-colors cursor-pointer h-full">
               <CardContent className="p-4">
                 <p className="text-xs text-gray-400 mb-1">Patrimoine</p>
-                <p className="text-2xl font-bold text-emerald-400 font-[family-name:var(--font-jetbrains)]">{formatEur(patrimoineTotal)}</p>
+                <p className="text-2xl font-bold text-emerald-400 font-[family-name:var(--font-jetbrains)]">{hideAmounts ? "•••• €" : formatEur(patrimoineTotal)}</p>
                 <p className="text-xs text-gray-500">{envelopeCount} enveloppe{envelopeCount > 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
