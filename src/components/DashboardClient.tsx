@@ -265,7 +265,8 @@ function SortableEnvelopeCard({
                   {formatEur(env.total)}
                 </p>
                 {hasQuotes && env.hasPnl && (
-                  <p className={`text-xs font-[family-name:var(--font-jetbrains)] mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  <p className={`text-xs font-[family-name:var(--font-jetbrains)] mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
+                    <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Latente</span>
                     {env.pnl >= 0 ? "+" : ""}{formatEur(env.pnl)}
                     <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
                   </p>
@@ -296,8 +297,9 @@ function SortableEnvelopeCard({
                   </div>
                 )}
                 {hasQuotes && realizedPnl !== 0 && (
-                  <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Gains encaissés (intérêts + dividendes), même sortis">
-                    PV réalisée {realizedPnl >= 0 ? "+" : ""}{formatEur(realizedPnl)}
+                  <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis">
+                    <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Réalisée</span>
+                    {realizedPnl >= 0 ? "+" : ""}{formatEur(realizedPnl)}
                   </p>
                 )}
                 {hasQuotes && triCashflowCount > 0 && (
@@ -620,35 +622,43 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   {formatEur(grandTotal)}
                 </p>
               )}
-              {/* R1: Global P&L */}
+              {/* R1: P&L global — distinction explicite LATENTE vs RÉALISÉE */}
               {hasQuotes && (
-                <>
-                  <p className={`text-sm font-[family-name:var(--font-jetbrains)] mt-0.5 ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                <div className="mt-1 flex flex-col items-end gap-1">
+                  {/* Plus-value latente (non réalisée) sur les positions cotées */}
+                  <p
+                    className={`text-sm font-[family-name:var(--font-jetbrains)] ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                    title="Plus-value latente (non réalisée) sur tes positions cotées — hors livrets"
+                  >
+                    <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Latente</span>
                     {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
-                    <span className="text-xs ml-1">
-                      ({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)
-                    </span>
+                    <span className="text-xs ml-1">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
                   </p>
-                  {totalCostBasis > 0 && (
-                    <p className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)] mt-0.5">
-                      Investi : {formatEur(totalCostBasis)}
-                    </p>
-                  )}
-                  {returns && returns.global.realized_pnl_eur !== 0 && (
-                    <p className="text-[11px] text-emerald-400/90 font-[family-name:var(--font-jetbrains)] mt-0.5" title="Gains encaissés (intérêts + dividendes), même sortis du patrimoine">
-                      PV réalisée : {returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}
-                    </p>
-                  )}
-                  {returns && (
-                    <div className="mt-0.5">
-                      <TriBadge
-                        tri={returns.global.tri_annual}
-                        cashflowCount={returns.global.cashflow_count}
-                        coverage={returns.global.coverage}
-                      />
-                    </div>
-                  )}
-                </>
+                  {/* Ligne secondaire compacte : Investi · Réalisée · TRI */}
+                  <div className="flex items-center justify-end flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-[family-name:var(--font-jetbrains)]">
+                    {totalCostBasis > 0 && (
+                      <span className="text-gray-500">Investi <span className="text-gray-300">{formatEur(totalCostBasis)}</span></span>
+                    )}
+                    {returns && returns.global.realized_pnl_eur !== 0 && (
+                      <>
+                        <span className="text-gray-700">·</span>
+                        <span className="text-gray-500" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis du patrimoine">
+                          Réalisée <span className="text-emerald-400">{returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}</span>
+                        </span>
+                      </>
+                    )}
+                    {returns && (
+                      <>
+                        <span className="text-gray-700">·</span>
+                        <TriBadge
+                          tri={returns.global.tri_annual}
+                          cashflowCount={returns.global.cashflow_count}
+                          coverage={returns.global.coverage}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
             <div className="flex flex-col items-end gap-1">

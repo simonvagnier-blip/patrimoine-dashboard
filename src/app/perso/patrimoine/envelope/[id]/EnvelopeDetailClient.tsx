@@ -591,7 +591,8 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                 );
               })()}
               {hasEnvelopePnl && (
-                <p className={`text-sm font-[family-name:var(--font-jetbrains)] mt-0.5 ${envelopePnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                <p className={`text-sm font-[family-name:var(--font-jetbrains)] mt-0.5 ${envelopePnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée) sur les positions cotées">
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Latente</span>
                   {envelopePnl >= 0 ? "+" : ""}{formatEur(envelopePnl)}
                   <span className="text-xs ml-1">({envelopePnl >= 0 ? "+" : ""}{envelopePnlPct.toFixed(1)}%)</span>
                 </p>
@@ -602,8 +603,9 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                 return (
                   <>
                     {row.realized_pnl_eur !== 0 && (
-                      <p className="text-xs text-emerald-400/90 font-[family-name:var(--font-jetbrains)] mt-0.5" title="Gains encaissés (intérêts + dividendes), même sortis de l'enveloppe">
-                        PV réalisée : {row.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(row.realized_pnl_eur)}
+                      <p className="text-xs text-emerald-400/90 font-[family-name:var(--font-jetbrains)] mt-0.5" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis de l'enveloppe">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Réalisée</span>
+                        {row.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(row.realized_pnl_eur)}
                       </p>
                     )}
                     <div className="mt-0.5">
