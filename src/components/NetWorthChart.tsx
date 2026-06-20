@@ -67,7 +67,7 @@ export default function NetWorthChart({ history, hideAmounts = false }: { histor
             <p className="text-sm text-gray-200">Patrimoine total</p>
             {data.length > 1 && (
               <span className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums ${up ? "text-emerald-400" : "text-red-400"}`}>
-                {up ? "▲" : "▼"} {hideAmounts ? "••••" : `${up ? "+" : ""}${eur(change)} (${up ? "+" : ""}${changePct.toFixed(1)}%)`}
+                {up ? "▲" : "▼"} {hideAmounts ? "••••" : `${up ? "+" : ""}${eur(change)}`} ({up ? "+" : ""}{changePct.toFixed(1)}%)
               </span>
             )}
           </div>

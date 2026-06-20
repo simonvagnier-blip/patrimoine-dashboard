@@ -267,12 +267,8 @@ function SortableEnvelopeCard({
                 {hasQuotes && env.hasPnl && (
                   <p className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
                     <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Latente</span>
-                    {hideAmounts ? "••••" : (
-                      <>
-                        {env.pnl >= 0 ? "+" : ""}{formatEur(env.pnl)}
-                        <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
-                      </>
-                    )}
+                    {hideAmounts ? "••••" : `${env.pnl >= 0 ? "+" : ""}${formatEur(env.pnl)}`}
+                    <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
                   </p>
                 )}
                 {/* Perf 1J/7J/30J calculée depuis les snapshots quotidiens.
@@ -653,12 +649,8 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   title="Plus-value latente (non réalisée) sur tes positions cotées — hors livrets"
                 >
                   {totalPnl >= 0 ? "▲" : "▼"}{" "}
-                  {hideAmounts ? "••••" : (
-                    <>
-                      {totalPnl >= 0 ? "+" : ""}{formatEur(totalPnl)}
-                      <span className="text-sm ml-1 opacity-80">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
-                    </>
-                  )}
+                  {hideAmounts ? "••••" : `${totalPnl >= 0 ? "+" : ""}${formatEur(totalPnl)}`}
+                  <span className="text-sm ml-1 opacity-80">({totalPnl >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)</span>
                 </p>
                 {/* Ligne secondaire : Investi · Réalisée · TRI */}
                 <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-[family-name:var(--font-jetbrains)] tabular-nums text-gray-500 mt-1.5">

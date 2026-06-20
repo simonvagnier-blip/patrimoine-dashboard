@@ -100,7 +100,7 @@ export default function PositionTable({ positions, grandTotal, hideAmounts = fal
               </div>
               <span className={`font-[family-name:var(--font-jetbrains)] ${pnlColor(pos.pnl)}`}>
                 {pos.pnl !== null ? (
-                  hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</>
+                  <>{hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}</>}{pos.pnl_pct !== null ? " (" + (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%)" : ""}</>
                 ) : "—"}
               </span>
             </div>
@@ -156,7 +156,7 @@ export default function PositionTable({ positions, grandTotal, hideAmounts = fal
                 </TableCell>
                 <TableCell className={`text-right font-[family-name:var(--font-jetbrains)] text-sm tabular-nums ${pnlColor(pos.pnl)}`}>
                   {pos.pnl !== null ? (
-                    hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}<span className="text-xs ml-1">({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</span></>
+                    <>{hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}</>}<span className="text-xs ml-1">({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</span></>
                   ) : "—"}
                 </TableCell>
                 <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-400 text-sm">
