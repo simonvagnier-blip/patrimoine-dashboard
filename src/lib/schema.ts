@@ -85,11 +85,14 @@ export const envelopeSnapshots = sqliteTable(
  * fee, interest, transfer. Used downstream to compute the true TRI (xirr),
  * track realized P&L for tax, and power the bank-import pipeline.
  *
- * Conventions for `amount` (EUR or native `currency`, investor-centric sign):
- *   - deposit / dividend received / interest / sell-proceeds → NEGATIVE
- *     (money going into the envelope is money leaving the investor's cash)
- *   - withdrawal / buy-cost / fee                           → POSITIVE
- *     (money going to the investor / leaving the envelope toward the market)
+ * Conventions for `amount` (EUR or native `currency`, ENVELOPE-centric sign) :
+ *   - deposit / buy-cost / fee / transfer → POSITIVE
+ *     (argent qui ENTRE dans l'enveloppe = sort de la poche de l'investisseur)
+ *   - withdrawal / sell-proceeds / dividend / interest → NEGATIVE
+ *     (argent qui REVIENT à l'investisseur)
+ * NB: returns.ts inverse ce signe pour xirr (perspective investisseur). Cette
+ * convention est celle réellement écrite par OperationDialog/API/MCP — ne pas
+ * la ré-inverser. (cf returns.ts:8-16)
  *
  * For buy/sell, `quantity` and `unit_price` are set; `position_id` links the
  * row to a specific position. For deposits/withdrawals, only `amount` is set.

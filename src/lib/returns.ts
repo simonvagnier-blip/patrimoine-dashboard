@@ -209,6 +209,34 @@ export async function computeReturns(): Promise<ReturnsResult> {
       (op) => op.envelope_id === e.id,
       e.total_value_eur
     );
+    let triAnnual = xirr(flows);
+    const investedNet = round2(netInvested(flows));
+
+    // Garde-fou COVERAGE-AWARE (remplace le hardcode coverage:"full").
+    // Le journal d'opérations est-il complet ? On compare le capital net
+    // investi DÉCLARÉ (investedNet, depuis les cashflows journalisés) au
+    // capital réellement présent (cost basis ou valeur actuelle). Si le
+    // journal sous-estime largement le capital (achats anciens non
+    // journalisés, ex: CTO), le TRI annualisé est un artefact → on le
+    // neutralise (null → badge "TRI n/c"). Ce N'EST PAS un plafond aveugle :
+    // un vrai TRI élevé avec journal qui réconcilie (ex: business Madagascar
+    // 10%/mois) passe intact.
+    const refCapital = Math.max(e.cost_basis_eur ?? 0, e.total_value_eur);
+    let coverage: ReturnRow["coverage"] = "full";
+    let coverageNote: string | undefined;
+    if (refCapital > 100 && investedNet < 0.5 * refCapital) {
+      coverage = "partial";
+      coverageNote = `Journal incomplet : capital investi journalisé ${investedNet} € < capital réel ~${round2(refCapital)} € — TRI non fiable`;
+      if (triAnnual !== null && Math.abs(triAnnual) > 1.0) triAnnual = null;
+    }
+    // Plafond de plausibilité pour les enveloppes NON-business : un TRI annualisé
+    // |x| > 100%/an sur des actifs diversifiés (PEA/CTO/AV) n'est pas un rendement
+    // soutenu mais un artefact xirr (fenêtre courte / apport récent). Les
+    // enveloppes "business" (ex: Madagascar, 10%/mois) sont exemptées.
+    if (e.type !== "business" && triAnnual !== null && Math.abs(triAnnual) > 1.0) {
+      triAnnual = null;
+    }
+
     envelopes.push({
       scope: "envelope",
       envelope_id: e.id,
@@ -216,10 +244,11 @@ export async function computeReturns(): Promise<ReturnsResult> {
       current_value_eur: e.total_value_eur,
       cashflow_count: Math.max(0, flows.length - 1),
       first_flow_date: flows.length > 1 ? flows[0].date.toISOString().split("T")[0] : null,
-      invested_net_eur: round2(netInvested(flows)),
+      invested_net_eur: investedNet,
       realized_pnl_eur: realizedPnlFor((op) => op.envelope_id === e.id),
-      tri_annual: xirr(flows),
-      coverage: "full",
+      tri_annual: triAnnual,
+      coverage,
+      coverage_note: coverageNote,
     });
   }
 

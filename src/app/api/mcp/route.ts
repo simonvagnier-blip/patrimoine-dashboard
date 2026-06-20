@@ -308,7 +308,7 @@ const TOOLS = [
   {
     name: "add_operation",
     description:
-      "Ajoute une opération au journal d'opérations (achat/vente d'action, dépôt, retrait, dividende reçu, intérêt). Utile pour tenir le journal qui sert au calcul du TRI. Conventions de signe : deposit/dividend/interest/sell-proceeds = NÉGATIF (argent qui sort de la poche du client) ; withdrawal/buy-cost/fee = POSITIF. Pour buy/sell, fournir aussi quantity et unit_price.",
+      "Ajoute une opération au journal d'opérations (achat/vente d'action, dépôt, retrait, dividende reçu, intérêt). Utile pour tenir le journal qui sert au calcul du TRI. Conventions de signe (centré ENVELOPPE) : deposit/buy/fee/transfer = POSITIF (argent qui ENTRE dans l'enveloppe) ; withdrawal/sell/dividend/interest = NÉGATIF (argent qui REVIENT à l'investisseur). Pour buy/sell, fournir aussi quantity et unit_price.",
     inputSchema: {
       type: "object",
       properties: {
