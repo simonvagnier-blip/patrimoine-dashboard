@@ -212,15 +212,13 @@ const ENVELOPE_COLORS = [
 ];
 
 function SortableEnvelopeCard({
-  env, basePath, loading, hasQuotes, grandTotal, tri, triCashflowCount, deltas, realizedPnl = 0, hideAmounts = false,
+  env, basePath, loading, hasQuotes, grandTotal, deltas, realizedPnl = 0, hideAmounts = false,
 }: {
   env: { id: string; name: string; color: string; total: number; positionCount: number; pnl: number; pnlPct: number; hasPnl: boolean };
   basePath: string;
   loading: boolean;
   hasQuotes: boolean;
   grandTotal: number;
-  tri: number | null;
-  triCashflowCount: number;
   deltas?: EnvelopeDeltas;
   realizedPnl?: number;
   hideAmounts?: boolean;
@@ -307,11 +305,6 @@ function SortableEnvelopeCard({
                     <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Réalisée</span>
                     {hideAmounts ? "••••" : `${realizedPnl >= 0 ? "+" : ""}${formatEur(realizedPnl)}`}
                   </p>
-                )}
-                {hasQuotes && triCashflowCount > 0 && (
-                  <div className="mt-0.5">
-                    <TriBadge tri={tri} cashflowCount={triCashflowCount} size="xs" />
-                  </div>
                 )}
               </>
             )}
@@ -744,6 +737,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           <StatsBar
             grandTotal={grandTotal}
             globalDeltas={globalDeltas}
+            hideAmounts={hideAmounts}
             basePath={basePath}
           />
         )}
@@ -765,36 +759,37 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           />
         )}
 
-        {/* Envelope Cards — sortable */}
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEnvelopeDragEnd}>
-          <SortableContext items={envelopeData.map((e) => e.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {envelopeData.map((env) => (
-                <SortableEnvelopeCard
-                  key={env.id}
-                  env={env}
-                  basePath={basePath}
-                  loading={loading}
-                  hasQuotes={hasQuotes}
-                  grandTotal={grandTotal}
-                  tri={returns?.envelopes.find((r) => r.envelope_id === env.id)?.tri_annual ?? null}
-                  triCashflowCount={returns?.envelopes.find((r) => r.envelope_id === env.id)?.cashflow_count ?? 0}
-                  deltas={env.deltas}
-                  realizedPnl={returns?.envelopes.find((r) => r.envelope_id === env.id)?.realized_pnl_eur ?? 0}
-                  hideAmounts={hideAmounts}
-                />
-              ))}
-              {/* Add envelope button */}
-              <button
-                onClick={() => setCreateEnvOpen(true)}
-                className="border-2 border-dashed border-gray-700 hover:border-gray-500 rounded-xl flex flex-col items-center justify-center gap-2 py-8 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer min-h-[140px]"
-              >
-                <span className="text-2xl">+</span>
-                <span className="text-xs">Ajouter une enveloppe</span>
-              </button>
-            </div>
-          </SortableContext>
-        </DndContext>
+        {/* Enveloppes — titre de section + action */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Mes enveloppes</p>
+            <button
+              onClick={() => setCreateEnvOpen(true)}
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              + Ajouter
+            </button>
+          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEnvelopeDragEnd}>
+            <SortableContext items={envelopeData.map((e) => e.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {envelopeData.map((env) => (
+                  <SortableEnvelopeCard
+                    key={env.id}
+                    env={env}
+                    basePath={basePath}
+                    loading={loading}
+                    hasQuotes={hasQuotes}
+                    grandTotal={grandTotal}
+                    deltas={env.deltas}
+                    realizedPnl={returns?.envelopes.find((r) => r.envelope_id === env.id)?.realized_pnl_eur ?? 0}
+                    hideAmounts={hideAmounts}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
 
         {/* Allocation Donut */}
         <Card className="bg-[#0d1117] border-gray-800">
@@ -842,7 +837,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             </div>
           </CardHeader>
           <CardContent>
-            <PositionTable positions={filteredPositions} grandTotal={grandTotal} />
+            <PositionTable positions={filteredPositions} grandTotal={grandTotal} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
       </div>

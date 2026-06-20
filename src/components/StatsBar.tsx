@@ -32,6 +32,7 @@ export default function StatsBar({
   grandTotal,
   globalDeltas,
   basePath = "",
+  hideAmounts = false,
 }: {
   grandTotal: number;
   /**
@@ -46,7 +47,9 @@ export default function StatsBar({
     d30: { perfEur: number; pct: number } | null;
   };
   basePath?: string;
+  hideAmounts?: boolean;
 }) {
+  const m = (s: string) => (hideAmounts ? "••••" : s);
   const [dividends, setDividends] = useState<DividendSummary | null>(null);
   const [savings, setSavings] = useState<MiniSummary | null>(null);
 
@@ -89,12 +92,12 @@ export default function StatsBar({
         <span className="text-[10px] uppercase tracking-wider text-gray-500">
           💰 Div/an
         </span>
-        <span className="text-sm font-semibold text-emerald-400 font-[family-name:var(--font-jetbrains)]">
-          {eur(dividends!.total_expected_annual_eur)}
+        <span className="text-sm font-semibold text-emerald-400 font-[family-name:var(--font-jetbrains)] tabular-nums">
+          {m(eur(dividends!.total_expected_annual_eur))}
         </span>
         {dividends!.total_received_ytd_eur > 0 && (
-          <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
-            (YTD {eur(dividends!.total_received_ytd_eur)})
+          <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)] tabular-nums">
+            (YTD {m(eur(dividends!.total_received_ytd_eur))})
           </span>
         )}
       </div>,
@@ -117,8 +120,7 @@ export default function StatsBar({
             savingsPositive ? "text-emerald-400" : "text-red-400"
           }`}
         >
-          {savingsPositive ? "+" : ""}
-          {eur(savings!.averages.avg_savings_eur)}
+          {hideAmounts ? "••••" : `${savingsPositive ? "+" : ""}${eur(savings!.averages.avg_savings_eur)}`}
         </span>
         <span className="text-[11px] text-gray-500">
           {savings!.averages.avg_savings_rate_pct.toFixed(0)}%
@@ -138,12 +140,11 @@ export default function StatsBar({
             {data ? (
               <>
                 <span
-                  className={`text-sm font-semibold font-[family-name:var(--font-jetbrains)] ${
+                  className={`text-sm font-semibold font-[family-name:var(--font-jetbrains)] tabular-nums ${
                     data.perfEur >= 0 ? "text-emerald-400" : "text-red-400"
                   }`}
                 >
-                  {data.perfEur >= 0 ? "+" : ""}
-                  {eur(data.perfEur)}
+                  {hideAmounts ? "••••" : `${data.perfEur >= 0 ? "+" : ""}${eur(data.perfEur)}`}
                 </span>
                 <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
                   ({data.pct >= 0 ? "+" : ""}

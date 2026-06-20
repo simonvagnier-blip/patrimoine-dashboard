@@ -25,6 +25,7 @@ interface PositionRow {
 interface PositionTableProps {
   positions: PositionRow[];
   grandTotal: number;
+  hideAmounts?: boolean;
 }
 
 type SortKey = "value" | "pnl" | "weight" | "ticker";
@@ -42,9 +43,10 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   );
 }
 
-export default function PositionTable({ positions, grandTotal }: PositionTableProps) {
+export default function PositionTable({ positions, grandTotal, hideAmounts = false }: PositionTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const mask = (s: string) => (hideAmounts ? "••••" : s);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -84,8 +86,8 @@ export default function PositionTable({ positions, grandTotal }: PositionTablePr
                   {pos.envelope_name.split(" ")[0]}
                 </Badge>
               </div>
-              <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white">
-                {formatEur(pos.current_value)}
+              <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white tabular-nums">
+                {mask(formatEur(pos.current_value))}
               </span>
             </div>
             <p className="text-xs text-gray-400 truncate">{pos.label}</p>
@@ -93,12 +95,12 @@ export default function PositionTable({ positions, grandTotal }: PositionTablePr
               <div className="flex gap-3 text-gray-500">
                 {pos.quantity !== null && <span>Qté: {pos.quantity.toLocaleString("fr-FR")}</span>}
                 {pos.current_price !== null && (
-                  <span>Cours: {pos.current_price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span>Cours: {mask(pos.current_price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>
                 )}
               </div>
               <span className={`font-[family-name:var(--font-jetbrains)] ${pnlColor(pos.pnl)}`}>
                 {pos.pnl !== null ? (
-                  <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</>
+                  hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</>
                 ) : "—"}
               </span>
             </div>
@@ -143,18 +145,18 @@ export default function PositionTable({ positions, grandTotal }: PositionTablePr
                 <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-300 text-sm">
                   {pos.quantity !== null ? pos.quantity.toLocaleString("fr-FR") : "—"}
                 </TableCell>
-                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-300 text-sm">
-                  {pos.pru !== null ? pos.pru.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (pos.currency === "USD" ? " $" : " €") : "—"}
+                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-300 text-sm tabular-nums">
+                  {pos.pru !== null ? mask(pos.pru.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (pos.currency === "USD" ? " $" : " €")) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-300 text-sm">
-                  {pos.current_price !== null ? pos.current_price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (pos.currency === "USD" ? " $" : " €") : "—"}
+                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-300 text-sm tabular-nums">
+                  {pos.current_price !== null ? mask(pos.current_price.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (pos.currency === "USD" ? " $" : " €")) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-white font-medium text-sm">
-                  {formatEur(pos.current_value)}
+                <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-white font-medium text-sm tabular-nums">
+                  {mask(formatEur(pos.current_value))}
                 </TableCell>
-                <TableCell className={`text-right font-[family-name:var(--font-jetbrains)] text-sm ${pnlColor(pos.pnl)}`}>
+                <TableCell className={`text-right font-[family-name:var(--font-jetbrains)] text-sm tabular-nums ${pnlColor(pos.pnl)}`}>
                   {pos.pnl !== null ? (
-                    <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}<span className="text-xs ml-1">({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</span></>
+                    hideAmounts ? "••••" : <>{pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)}<span className="text-xs ml-1">({pos.pnl_pct !== null ? (pos.pnl_pct >= 0 ? "+" : "") + pos.pnl_pct.toFixed(1) + "%" : ""})</span></>
                   ) : "—"}
                 </TableCell>
                 <TableCell className="text-right font-[family-name:var(--font-jetbrains)] text-gray-400 text-sm">
