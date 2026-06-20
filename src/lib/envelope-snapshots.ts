@@ -33,7 +33,7 @@ export async function computeAllEnvelopeValues(): Promise<EnvelopeValuation[]> {
     .map((p) => p.yahoo_ticker)
     .filter((t): t is string => !!t);
 
-  const { quotes, eurUsd } = await fetchAllQuotes(tickers);
+  const { quotes, eurUsd, mgaEurRate } = await fetchAllQuotes(tickers);
 
   const totals = new Map<string, number>();
   for (const p of positions) {
@@ -45,7 +45,10 @@ export async function computeAllEnvelopeValues(): Promise<EnvelopeValuation[]> {
         value = p.quantity * priceEur;
       }
     } else if (typeof p.manual_value === "number") {
-      value = p.manual_value;
+      // Conversion devise pour les positions à valeur manuelle (business MG).
+      if (p.currency === "MGA") value = p.manual_value / mgaEurRate;
+      else if (p.currency === "USD") value = p.manual_value / eurUsd;
+      else value = p.manual_value;
     }
     totals.set(p.envelope_id, (totals.get(p.envelope_id) ?? 0) + value);
   }

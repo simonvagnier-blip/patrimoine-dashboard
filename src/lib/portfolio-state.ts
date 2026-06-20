@@ -62,6 +62,9 @@ export interface EnrichedEnvelope {
 export interface PortfolioState {
   fetched_at: string;
   eur_usd: number;
+  /** Taux EUR→MGA (1 EUR = X MGA). Exposé pour convertir les opérations en
+   *  MGA (ex: intérêts business Madagascar) côté returns/realized P&L. */
+  mga_eur_rate: number;
   total_value_eur: number;
   invested_capital_eur: number;
   pnl_eur: number;
@@ -85,11 +88,13 @@ export async function loadPortfolioState(): Promise<PortfolioState> {
   const userParamsRows = await db.select().from(schema.userParams).all();
   const peaVersementsRaw = userParamsRows.find((p) => p.key === "peaVersements")?.value;
   const peaVersementsCumules = peaVersementsRaw ? parseFloat(peaVersementsRaw) : null;
+  // Taux de conversion MGA → EUR : fourni par fetchAllQuotes ci-dessous via
+  // Yahoo Finance (EURMGA=X). Fallback 4800 si Yahoo down.
 
   const tickers = positionRows
     .map((p) => p.yahoo_ticker)
     .filter((t): t is string => !!t);
-  const { quotes, eurUsd } = await fetchAllQuotes(tickers);
+  const { quotes, eurUsd, mgaEurRate } = await fetchAllQuotes(tickers);
 
   const envelopeById = new Map(envelopeRows.map((e) => [e.id, e]));
 
@@ -119,7 +124,15 @@ export async function loadPortfolioState(): Promise<PortfolioState> {
         }
       }
     } else if (typeof p.manual_value === "number") {
-      current_value_eur = p.manual_value;
+      // Conversion devise pour les valeurs manuelles (fonds euros = EUR,
+      // business Madagascar = MGA, etc.). Par défaut on suppose EUR.
+      if (p.currency === "MGA") {
+        current_value_eur = p.manual_value / mgaEurRate;
+      } else if (p.currency === "USD") {
+        current_value_eur = p.manual_value / eurUsd;
+      } else {
+        current_value_eur = p.manual_value;
+      }
     }
 
     return {
@@ -176,14 +189,16 @@ export async function loadPortfolioState(): Promise<PortfolioState> {
       }
     }
     // Capital investi initial : cost_basis + somme des manual_value des
-    // positions non-cotées (fonds euros). Exclut les livrets (épargne).
-    // Utilisé par la sim pour la série invested[] (sans PV latentes).
+    // positions non-cotées (fonds euros, business Madagascar). Exclut les
+    // livrets (épargne). Utilisé par la sim pour la série invested[] (sans PV).
+    // Pour les positions manual_value en devise étrangère (MGA/USD), on
+    // utilise current_value_eur qui est déjà converti.
     let initial_invested_eur = 0;
     if (e.type !== "livrets") {
       initial_invested_eur = costBasisSum;
       for (const p of envPositions) {
         if (p.cost_basis_eur === null && p.manual_value !== null) {
-          initial_invested_eur += p.manual_value;
+          initial_invested_eur += p.current_value_eur;
         }
       }
     }
@@ -217,7 +232,9 @@ export async function loadPortfolioState(): Promise<PortfolioState> {
   const invested_capital_eur = positions.reduce((s, p) => {
     if (livretEnvelopeIds.has(p.envelope_id)) return s;
     if (p.cost_basis_eur !== null) return s + p.cost_basis_eur;
-    if (p.manual_value !== null) return s + p.manual_value;
+    // current_value_eur est déjà converti (MGA/USD → EUR), donc on l'utilise
+    // directement pour les positions manual_value en devise étrangère.
+    if (p.manual_value !== null) return s + p.current_value_eur;
     return s + p.current_value_eur;
   }, 0);
   const pnl_eur = positions.reduce((s, p) => s + (p.pnl_eur ?? 0), 0);
@@ -235,6 +252,7 @@ export async function loadPortfolioState(): Promise<PortfolioState> {
   return {
     fetched_at: new Date().toISOString(),
     eur_usd: eurUsd,
+    mga_eur_rate: mgaEurRate,
     total_value_eur: round2(total_value_eur),
     invested_capital_eur: round2(invested_capital_eur),
     pnl_eur: round2(pnl_eur),

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import PositionDialog from "@/components/PositionDialog";
 import Link from "next/link";
 import type { QuotesResult } from "@/lib/quotes";
+import { manualValueToEur } from "@/lib/currency";
 
 interface Envelope {
   id: string; name: string; type: string; color: string;
@@ -64,7 +65,13 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   useEffect(() => { fetchQuotes(); }, [fetchQuotes]);
 
   function computeValue(pos: Position) {
-    if (pos.manual_value !== null) return { price: null, value: pos.manual_value, pnl: null, pnlPct: null };
+    if (pos.manual_value !== null) {
+      const valueEur = manualValueToEur(pos.manual_value, pos.currency, {
+        eurUsd: quotes?.eurUsd,
+        mgaEurRate: quotes?.mgaEurRate,
+      });
+      return { price: null, value: valueEur, pnl: null, pnlPct: null };
+    }
     if (!pos.quantity || !pos.pru) return { price: null, value: 0, pnl: null, pnlPct: null };
     const eurUsd = quotes?.eurUsd ?? 1.08;
     const quote = pos.yahoo_ticker && quotes?.quotes[pos.yahoo_ticker];

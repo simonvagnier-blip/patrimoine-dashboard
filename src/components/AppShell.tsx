@@ -18,11 +18,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [space, setSpace] = useState<Space>(() => detectSpace(pathname));
 
-  if (pathname === "/login") return <>{children}</>;
-
   useEffect(() => {
     setSpace(detectSpace(pathname));
   }, [pathname]);
+
+  // Rules of Hooks : ce return anticipé DOIT venir après tous les hooks, sinon
+  // le nombre de hooks change entre /login et les autres pages (React error).
+  if (pathname === "/login") return <>{children}</>;
 
   function handleSpaceChange(newSpace: Space) {
     setSpace(newSpace);

@@ -7,12 +7,16 @@ const SCENARIO_LABELS: Record<string, string> = {
   sp: "S&P 500", wd: "MSCI World", em: "Emerging Markets", nq: "Nasdaq-100",
   tech: "Tech/Growth", energy: "Énergie", crypto: "Crypto",
   fg: "Fonds garanti", fe: "Fonds euros", cash: "Cash",
+  business: "Business (privé)",
+  cash_mga: "Cash Mada (MGA)",
 };
 
 const SCENARIO_COLORS: Record<string, string> = {
   sp: "#3b82f6", wd: "#34d399", em: "#f59e0b", nq: "#a78bfa",
   tech: "#38bdf8", energy: "#ef4444", crypto: "#f7931a",
   fg: "#6b7280", fe: "#9ca3af", cash: "#4b5563",
+  business: "#d97706",
+  cash_mga: "#0891b2",
 };
 
 interface AllocationData {

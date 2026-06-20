@@ -15,6 +15,12 @@ export interface Quote {
 export interface QuotesResult {
   quotes: Record<string, Quote>;
   eurUsd: number;
+  /**
+   * Taux MGA → EUR (1 EUR = X MGA). Lu depuis userParams.mga_eur_rate,
+   * mis à jour manuellement par l'utilisateur. Utilisé pour la conversion
+   * des positions à valeur manuelle en MGA (business Madagascar).
+   */
+  mgaEurRate: number;
   fetchedAt: string;
 }
 
@@ -72,13 +78,46 @@ export async function fetchAllQuotes(
   const quotes: Record<string, Quote> = {};
   const uniqueTickers = [...new Set(yahooTickers.filter(Boolean))];
 
-  // Fetch EUR/USD rate via chart() as well
+  // Fetch FX rates : source primaire = open.er-api.com (gratuit, sans clé,
+  // données quotidiennes basées sur les banques centrales, plus stable que
+  // Yahoo sur les paires émergentes comme MGA). Fallback Yahoo si l'API est
+  // down. Fallback hardcodé en dernier recours.
   let eurUsd = 1.08;
+  let mgaEurRateLive: number | null = null;
   try {
-    const fx = await fetchOneViaChart("EURUSD=X");
-    if (fx && fx.price > 0) eurUsd = fx.price;
+    const res = await fetch("https://open.er-api.com/v6/latest/EUR", {
+      next: { revalidate: 3600 }, // cache Next.js 1h, par-dessus notre cache 15min
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { result?: string; rates?: Record<string, number> };
+      if (data.result === "success" && data.rates) {
+        if (typeof data.rates.USD === "number" && data.rates.USD > 0) {
+          eurUsd = data.rates.USD;
+        }
+        if (typeof data.rates.MGA === "number" && data.rates.MGA > 0) {
+          mgaEurRateLive = data.rates.MGA;
+        }
+      }
+    }
   } catch {
-    console.warn("Failed to fetch EUR/USD rate, using fallback");
+    console.warn("open.er-api.com indispo, fallback Yahoo");
+  }
+  // Fallback Yahoo si une des deux rates n'a pas été obtenue
+  if (mgaEurRateLive === null || eurUsd === 1.08) {
+    try {
+      const [fxUsd, fxMga] = await Promise.allSettled([
+        eurUsd === 1.08 ? fetchOneViaChart("EURUSD=X") : Promise.resolve(null),
+        mgaEurRateLive === null ? fetchOneViaChart("EURMGA=X") : Promise.resolve(null),
+      ]);
+      if (fxUsd.status === "fulfilled" && fxUsd.value && fxUsd.value.price > 0 && eurUsd === 1.08) {
+        eurUsd = fxUsd.value.price;
+      }
+      if (fxMga.status === "fulfilled" && fxMga.value && fxMga.value.price > 0 && mgaEurRateLive === null) {
+        mgaEurRateLive = fxMga.value.price;
+      }
+    } catch {
+      // tant pis
+    }
   }
 
   // Parallel batches
@@ -95,9 +134,15 @@ export async function fetchAllQuotes(
     }
   }
 
+  // Taux MGA→EUR : Yahoo live (EURMGA=X) si dispo, sinon fallback 4800.
+  // Yahoo expose le cours EUR/MGA mis à jour quotidiennement (paire flottante,
+  // pas spéculative — légèrement moins fluide que les majors mais fiable).
+  const mgaEurRate = mgaEurRateLive ?? 4800;
+
   const data: QuotesResult = {
     quotes,
     eurUsd,
+    mgaEurRate,
     fetchedAt: new Date().toISOString(),
   };
 

@@ -87,6 +87,15 @@ export interface ReturnRow {
   cashflow_count: number;
   first_flow_date: string | null;
   invested_net_eur: number; // sum of cash_out - sum of cash_in (investor perspective), NOT counting terminal
+  /**
+   * Plus-value RÉALISÉE (gains encaissés) en EUR : somme des intérêts +
+   * dividendes effectivement perçus, convertis en EUR. Indépendant de la
+   * valeur actuelle — compte les gains même s'ils ont été dépensés/sortis.
+   * Ex: intérêts du prêt textile Madagascar ramenés en espèces.
+   * NB: les plus-values de cession (`sell`) ne sont PAS encore incluses
+   * (nécessite le cost basis par lot — TODO quand un deal sortira).
+   */
+  realized_pnl_eur: number;
   tri_annual: number | null; // e.g. 0.084 = +8.4%/year
   coverage: "full" | "none" | "partial"; // whether the ops reconcile with current qty
   coverage_note?: string;
@@ -110,11 +119,32 @@ export async function computeReturns(): Promise<ReturnsResult> {
   const state = await loadPortfolioState();
   const today = new Date();
   const eurUsd = state.eur_usd;
+  const mgaEurRate = state.mga_eur_rate;
 
   const allOps = await db.select().from(schema.operations).all();
 
   function convertToEur(amount: number, currency: string): number {
-    return currency === "USD" ? amount / eurUsd : amount;
+    if (currency === "USD") return amount / eurUsd;
+    if (currency === "MGA") return amount / mgaEurRate;
+    return amount;
+  }
+
+  /**
+   * Plus-value réalisée pour un sous-ensemble d'opérations : somme des
+   * intérêts + dividendes encaissés (stockés en négatif = argent revenu à
+   * l'investisseur, cf conventions ci-dessus → on inverse le signe).
+   */
+  function realizedPnlFor(
+    predicate: (op: (typeof allOps)[number]) => boolean
+  ): number {
+    let total = 0;
+    for (const op of allOps) {
+      if (!predicate(op)) continue;
+      if (op.type === "interest" || op.type === "dividend") {
+        total += -convertToEur(op.amount, op.currency);
+      }
+    }
+    return round2(total);
   }
 
   function flowsFor(
@@ -165,6 +195,7 @@ export async function computeReturns(): Promise<ReturnsResult> {
       cashflow_count: Math.max(0, flows.length - 1),
       first_flow_date: flows.length > 1 ? flows[0].date.toISOString().split("T")[0] : null,
       invested_net_eur: round2(netInvested(flows)),
+      realized_pnl_eur: realizedPnlFor((op) => op.position_id === p.id),
       tri_annual: xirr(flows),
       ...coverage,
     });
@@ -186,13 +217,24 @@ export async function computeReturns(): Promise<ReturnsResult> {
       cashflow_count: Math.max(0, flows.length - 1),
       first_flow_date: flows.length > 1 ? flows[0].date.toISOString().split("T")[0] : null,
       invested_net_eur: round2(netInvested(flows)),
+      realized_pnl_eur: realizedPnlFor((op) => op.envelope_id === e.id),
       tri_annual: xirr(flows),
       coverage: "full",
     });
   }
 
-  // Global TRI across everything
+  // Global TRI across everything.
+  // Garde-fou de plausibilité : au niveau du PORTEFEUILLE GLOBAL, un TRI
+  // annualisé |x| > 100%/an n'est pas un vrai rendement soutenu mais un artefact
+  // de xirr dû à un historique d'opérations incomplet (la plupart des achats
+  // anciens ne sont pas journalisés, et des flux récents — ex: intérêts
+  // Madagascar — sur une fenêtre courte font exploser l'annualisation). On le
+  // neutralise (null → badge "TRI n/c") pour ne pas afficher un chiffre
+  // trompeur. NB: on garde les TRI élevés au niveau ENVELOPPE (un deal business
+  // peut réellement faire 10%/mois ≈ 214%/an).
   const globalFlows = flowsFor(() => true, state.total_value_eur);
+  let globalTri = xirr(globalFlows);
+  if (globalTri !== null && Math.abs(globalTri) > 1.0) globalTri = null;
   const global: ReturnRow = {
     scope: "global",
     current_value_eur: state.total_value_eur,
@@ -202,7 +244,8 @@ export async function computeReturns(): Promise<ReturnsResult> {
         ? globalFlows[0].date.toISOString().split("T")[0]
         : null,
     invested_net_eur: round2(netInvested(globalFlows)),
-    tri_annual: xirr(globalFlows),
+    realized_pnl_eur: realizedPnlFor(() => true),
+    tri_annual: globalTri,
     coverage: "full",
   };
 

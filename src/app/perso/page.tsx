@@ -22,6 +22,25 @@ export default async function PersoHome() {
   const latestSnapshot = allSnapshots.sort((a, b) => b.date.localeCompare(a.date))[0];
   const patrimoineTotal = latestSnapshot?.total_value ?? 0;
 
+  // Live envelope count — same source as /perso/patrimoine (all rows of schema.envelopes)
+  const envelopeCount = (await db.select().from(schema.envelopes).all()).length;
+
+  // Surface l'enveloppe business (Madagascar) sur le landing : donnée la plus
+  // active (perf élevée + revenu mensuel) et auparavant enterrée à plusieurs
+  // clics. Guard : rien ne s'affiche sans enveloppe business (install vierge).
+  const businessEnv = (
+    await db.select().from(schema.envelopes).where(eq(schema.envelopes.type, "business")).all()
+  )[0];
+  let businessValue = 0;
+  if (businessEnv) {
+    const bSnaps = await db
+      .select()
+      .from(schema.envelopeSnapshots)
+      .where(eq(schema.envelopeSnapshots.envelope_id, businessEnv.id))
+      .all();
+    businessValue = bSnaps.sort((a, b) => b.date.localeCompare(a.date))[0]?.value_eur ?? 0;
+  }
+
   const persoTasks = await db.select().from(schema.tasks).where(eq(schema.tasks.space, "perso")).all();
   const todoTasks = persoTasks.filter((t) => t.status === "todo");
   const inProgressTasks = persoTasks.filter((t) => t.status === "in_progress");
@@ -72,6 +91,29 @@ export default async function PersoHome() {
           <p className="text-gray-400 text-sm mt-1">Espace personnel</p>
         </div>
 
+        {/* Business highlight — surface l'activité la plus vivante en tête */}
+        {businessEnv && (
+          <Link href={`/perso/patrimoine/envelope/${businessEnv.id}`}>
+            <Card className="bg-[#0d1117] border-amber-900/40 hover:border-amber-700/60 transition-colors cursor-pointer">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: businessEnv.color }} />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{businessEnv.name}</p>
+                    <p className="text-xs text-gray-400">Activité en cours · revenu mensuel</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: businessEnv.color }}>
+                    {formatEur(businessValue)}
+                  </p>
+                  <p className="text-[11px] text-amber-500/80">Voir le détail →</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
         {/* Top row: Patrimoine + Habitudes + Budget */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Link href="/perso/patrimoine">
@@ -79,7 +121,7 @@ export default async function PersoHome() {
               <CardContent className="p-4">
                 <p className="text-xs text-gray-400 mb-1">Patrimoine</p>
                 <p className="text-2xl font-bold text-emerald-400 font-[family-name:var(--font-jetbrains)]">{formatEur(patrimoineTotal)}</p>
-                <p className="text-xs text-gray-500">5 enveloppes</p>
+                <p className="text-xs text-gray-500">{envelopeCount} enveloppe{envelopeCount > 1 ? "s" : ""}</p>
               </CardContent>
             </Card>
           </Link>

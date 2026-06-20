@@ -38,9 +38,10 @@ export function TriBadge({
     return (
       <span
         className={`${sizeClass} text-amber-500 font-[family-name:var(--font-jetbrains)]`}
-        title="Le TRI n'a pas pu être calculé (cashflows incohérents)"
+        title="TRI non calculable : pas assez d'historique d'opérations cohérent pour le calculer"
+        aria-label="TRI non calculable"
       >
-        TRI ?
+        TRI n/c
       </span>
     );
   }

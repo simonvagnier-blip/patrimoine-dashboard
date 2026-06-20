@@ -13,6 +13,7 @@ import ExportPDF from "./ExportPDF";
 import Link from "next/link";
 import type { QuotesResult } from "@/lib/quotes";
 import type { ReturnsResult } from "@/lib/returns";
+import { manualValueToEur } from "@/lib/currency";
 import { TriBadge } from "./TriBadge";
 import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
@@ -64,12 +65,17 @@ function computePositionValue(
   current_value: number;
   pnl: number | null;
   pnl_pct: number | null;
+  daily_change_pct: number | null;
 } {
   if (pos.manual_value !== null) {
-    return { current_price: null, current_value: pos.manual_value, pnl: null, pnl_pct: null };
+    const valueEur = manualValueToEur(pos.manual_value, pos.currency, {
+      eurUsd: quotes?.eurUsd,
+      mgaEurRate: quotes?.mgaEurRate,
+    });
+    return { current_price: null, current_value: valueEur, pnl: null, pnl_pct: null, daily_change_pct: null };
   }
   if (!pos.quantity || !pos.pru) {
-    return { current_price: null, current_value: 0, pnl: null, pnl_pct: null };
+    return { current_price: null, current_value: 0, pnl: null, pnl_pct: null, daily_change_pct: null };
   }
   const quote = pos.yahoo_ticker && quotes?.quotes[pos.yahoo_ticker];
   const eurUsd = quotes?.eurUsd ?? 1.08;
@@ -80,18 +86,114 @@ function computePositionValue(
     const costBasisEur = pos.currency === "USD" ? costBasis / eurUsd : costBasis;
     const pnl = valueEur - costBasisEur;
     const pnl_pct = costBasisEur > 0 ? (pnl / costBasisEur) * 100 : 0;
-    return { current_price: price, current_value: valueEur, pnl, pnl_pct };
+    return {
+      current_price: price,
+      current_value: valueEur,
+      pnl,
+      pnl_pct,
+      // Yahoo expose `changePercent` = variation intraday vs clôture précédente.
+      // Pour le 1J de la card, on veut ça (pas la variation du snapshot stocké
+      // qui peut sauter un week-end et donner une fausse impression de hausse).
+      daily_change_pct: typeof quote.changePercent === "number" ? quote.changePercent : null,
+    };
   }
   const fallback = pos.quantity * pos.pru;
   const fallbackEur = pos.currency === "USD" ? fallback / eurUsd : fallback;
-  return { current_price: null, current_value: fallbackEur, pnl: null, pnl_pct: null };
+  return { current_price: null, current_value: fallbackEur, pnl: null, pnl_pct: null, daily_change_pct: null };
 }
 
 function formatEur(v: number, decimals = 0): string {
   return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: decimals });
 }
 
-interface Snapshot { date: string; total_value: number; }
+interface Snapshot {
+  date: string;
+  total_value: number;
+  invested_total?: number | null;
+  /** JSON serialisé {envelope_id: value_eur} — utilisé pour calculer les
+   *  deltas par enveloppe sur 1J/7J/30J. */
+  details_json?: string | null;
+}
+
+interface EnvelopeDeltas {
+  d1: { pct: number; perfEur: number } | null;
+  d7: { pct: number; perfEur: number } | null;
+  d30: { pct: number; perfEur: number } | null;
+}
+
+interface OperationRow {
+  envelope_id: string;
+  date: string; // YYYY-MM-DD
+  type: string; // 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'dividend' | 'interest' | 'fee' | 'transfer'
+  amount: number; // signé selon convention schema (cf src/lib/schema.ts)
+}
+
+/**
+ * Calcule la PERFORMANCE MARCHÉ PURE pour une enveloppe sur N jours.
+ *
+ *   pure_perf_eur = value_now − value_then − contributions
+ *   pct           = pure_perf_eur / value_then × 100
+ *
+ * `contributions` = somme des flux externes (achats/dépôts +, ventes/retraits −)
+ * de l'enveloppe entre snapshot_then.date+1 et aujourd'hui inclus.
+ *
+ * Les dividendes/intérêts NE SONT PAS soustraits → comptés comme PERF (= vrai
+ * retour de l'investissement). Idem pour les ajustements manuels de
+ * manual_value (Cash MGA encaissant des intérêts), qui ne génèrent pas d'op
+ * `buy` mais font monter la valeur de l'enveloppe → comptés comme perf aussi.
+ *
+ * Retourne null si pas assez d'historique pour la fenêtre demandée.
+ */
+function computeEnvelopeDeltas(
+  envId: string,
+  currentValue: number,
+  sortedHistory: Snapshot[],
+  operations: OperationRow[],
+): EnvelopeDeltas {
+  // Map opérations par enveloppe pour éviter de réitérer tout le journal à
+  // chaque appel.
+  const envOps = operations.filter((o) => o.envelope_id === envId);
+
+  function compute(days: number): { pct: number; perfEur: number } | null {
+    const target = Date.now() - days * 86400000;
+    let snapshot: Snapshot | null = null;
+    for (const s of sortedHistory) {
+      if (new Date(s.date).getTime() <= target) snapshot = s;
+      else break;
+    }
+    if (!snapshot || !snapshot.details_json) return null;
+
+    let pastValue: number;
+    try {
+      const details = JSON.parse(snapshot.details_json) as Record<string, number>;
+      const v = details[envId];
+      if (typeof v !== "number" || v <= 0) return null;
+      pastValue = v;
+    } catch {
+      return null;
+    }
+
+    // Somme des contributions externes entre snapshot.date (exclusif) et today (inclusif)
+    let contributions = 0;
+    for (const op of envOps) {
+      if (op.date <= snapshot.date) continue;
+      const amt = Math.abs(op.amount);
+      if (op.type === "buy" || op.type === "deposit") contributions += amt;
+      else if (op.type === "sell" || op.type === "withdrawal") contributions -= amt;
+      // dividend / interest / fee / transfer → ignorés (comptés en perf ou neutres)
+    }
+
+    const perfEur = currentValue - pastValue - contributions;
+    const pct = (perfEur / pastValue) * 100;
+    return { pct, perfEur };
+  }
+
+  return {
+    d1: compute(1),
+    d7: compute(7),
+    d30: compute(30),
+  };
+}
 
 const ENVELOPE_TYPES = [
   { value: "pea", label: "PEA" },
@@ -109,7 +211,7 @@ const ENVELOPE_COLORS = [
 ];
 
 function SortableEnvelopeCard({
-  env, basePath, loading, hasQuotes, grandTotal, tri, triCashflowCount,
+  env, basePath, loading, hasQuotes, grandTotal, tri, triCashflowCount, deltas, realizedPnl = 0,
 }: {
   env: { id: string; name: string; color: string; total: number; positionCount: number; pnl: number; pnlPct: number; hasPnl: boolean };
   basePath: string;
@@ -118,6 +220,8 @@ function SortableEnvelopeCard({
   grandTotal: number;
   tri: number | null;
   triCashflowCount: number;
+  deltas?: EnvelopeDeltas;
+  realizedPnl?: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: env.id });
   const style = {
@@ -166,6 +270,36 @@ function SortableEnvelopeCard({
                     <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
                   </p>
                 )}
+                {/* Perf 1J/7J/30J calculée depuis les snapshots quotidiens.
+                    Période avec — si pas assez d'historique pour cette enveloppe. */}
+                {hasQuotes && deltas && (deltas.d1 || deltas.d7 || deltas.d30) && (
+                  <div className="flex items-center gap-2 mt-1 font-[family-name:var(--font-jetbrains)] text-[10px]">
+                    {(["d1", "d7", "d30"] as const).map((k) => {
+                      const lbl = k === "d1" ? "1J" : k === "d7" ? "7J" : "30J";
+                      const v = deltas[k];
+                      if (!v) {
+                        return (
+                          <span key={k} className="text-gray-600">
+                            <span className="text-gray-500">{lbl}</span> —
+                          </span>
+                        );
+                      }
+                      const color = v.pct >= 0 ? "text-emerald-400" : "text-red-400";
+                      return (
+                        <span key={k} className={color}>
+                          <span className="text-gray-500">{lbl}</span>{" "}
+                          {v.pct >= 0 ? "+" : ""}
+                          {v.pct.toFixed(1)}%
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {hasQuotes && realizedPnl !== 0 && (
+                  <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Gains encaissés (intérêts + dividendes), même sortis">
+                    PV réalisée {realizedPnl >= 0 ? "+" : ""}{formatEur(realizedPnl)}
+                  </p>
+                )}
                 {hasQuotes && triCashflowCount > 0 && (
                   <div className="mt-0.5">
                     <TriBadge tri={tri} cashflowCount={triCashflowCount} size="xs" />
@@ -206,6 +340,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   const [quotesError, setQuotesError] = useState(false);
   // F1: History
   const [history, setHistory] = useState<Snapshot[]>([]);
+  const [operations, setOperations] = useState<OperationRow[]>([]);
   // Versements cumulés PEA (depuis le profil fiscal / userParams.peaVersements).
   // Utilisé pour la barre de progression du FillTargetWidget : le plafond 150k€
   // porte sur les dépôts, pas sur la valeur. Null = non renseigné → fallback
@@ -280,6 +415,16 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   // F1: Fetch history
   useEffect(() => {
     fetch("/api/snapshots?days=90").then((r) => r.ok ? r.json() : []).then(setHistory).catch(() => {});
+    // Opérations (achats, dépôts, retraits…) sur les 31 derniers jours,
+    // nécessaires pour calculer la perf marché pure 1J/7J/30J par enveloppe
+    // (soustrait les contributions des deltas de valeur).
+    const fromDate = new Date(Date.now() - 31 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    fetch(`/api/operations?from=${fromDate}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setOperations(Array.isArray(data) ? data : []))
+      .catch(() => {});
   }, []);
 
   // Fetch peaVersements (fiscal profile) pour la barre de progression PEA
@@ -329,7 +474,10 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   const totalCostBasis = enrichedPositions.reduce((sum, p) => {
     if (livretEnvelopeIds.has(p.envelope_id)) return sum;
     if (p.pnl !== null) return sum + (p.current_value - p.pnl);
-    if (p.manual_value !== null) return sum + p.manual_value;
+    // Pour manual_value, current_value est déjà converti via computePositionValue
+    // (utilise manualValueToEur qui gère MGA/USD/EUR). On l'utilise donc plutôt
+    // que p.manual_value brut qui peut être dans une devise étrangère.
+    if (p.manual_value !== null) return sum + p.current_value;
     return sum + p.current_value;
   }, 0);
   const totalPnlPct = totalCostBasis > 0 ? (totalPnl / totalCostBasis) * 100 : 0;
@@ -353,6 +501,12 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasQuotes]);
 
+  // Pré-trie l'historique pour le calcul des deltas par enveloppe (réutilisé
+  // pour chaque enveloppe au lieu d'un sort par appel).
+  const sortedHistoryAsc = [...history].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+
   const envelopeData = envelopes.map((env) => {
     const envPositions = enrichedPositions.filter((p) => p.envelope_id === env.id);
     const total = envPositions.reduce((sum, p) => sum + p.current_value, 0);
@@ -369,6 +523,16 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
       env.type === "pea"
         ? (peaDeposits ?? (envHasPnl ? envCostBasis : null))
         : null;
+    // Deltas 1J/7J/30J : performance marché pure (= delta valeur − contributions
+    // externes dans la fenêtre). Les achats/dépôts sont soustraits → le delta
+    // reflète UNIQUEMENT le mouvement de marché (cf computeEnvelopeDeltas).
+    // Pour les enveloppes purement cash (livrets) le tracking des cashflows
+    // n'est pas fiable (l'utilisateur édite manual_value sans logger d'op) →
+    // on n'affiche pas de perf pour éviter d'induire en erreur.
+    const envDeltas: EnvelopeDeltas =
+      env.type === "livrets"
+        ? { d1: null, d7: null, d30: null }
+        : computeEnvelopeDeltas(env.id, total, sortedHistoryAsc, operations);
     return {
       ...env,
       total,
@@ -377,8 +541,46 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
       pnlPct: envPnlPct,
       hasPnl: envHasPnl,
       deposits: depositsForEnv,
+      deltas: envDeltas,
     };
   });
+
+  // Deltas globaux (StatsBar) : on AGRÈGE les perfs marché pures des enveloppes.
+  //   - perf_total_eur = somme des perfEur de chaque enveloppe (uniquement
+  //     celles qui ont un delta calculable pour la période)
+  //   - pct = perf_total_eur / somme(valueThen des enveloppes participantes) × 100
+  // Approche cohérente avec les cards : si on ajoute Madagascar aujourd'hui,
+  // ça contribue 0 à la perf 1J (pas dans la fenêtre) → ne fausse pas le total.
+  function aggregateDeltas(key: "d1" | "d7" | "d30"): { perfEur: number; pct: number } | null {
+    let perfSum = 0;
+    let basisSum = 0;
+    let anyHit = false;
+    for (const e of envelopeData) {
+      const d = e.deltas[key];
+      if (!d) continue;
+      // Pour calculer le % il nous faut la valeur "then" de cette enveloppe.
+      // On la recalcule : valueThen = e.total - d.perfEur - contributions_in_window.
+      // Mais on a déjà perfEur = (now - then - contribs), donc
+      // then = now - perfEur - contribs. On n'a pas contribs ici à la main.
+      // Alternative : utiliser d.perfEur / (d.pct / 100) = valueThen.
+      if (d.pct === 0) {
+        // perfEur = 0 → on peut juste ignorer pour le %
+        continue;
+      }
+      const valueThen = d.perfEur / (d.pct / 100);
+      perfSum += d.perfEur;
+      basisSum += valueThen;
+      anyHit = true;
+    }
+    if (!anyHit || basisSum <= 0) return null;
+    return { perfEur: perfSum, pct: (perfSum / basisSum) * 100 };
+  }
+
+  const globalDeltas = {
+    d1: aggregateDeltas("d1"),
+    d7: aggregateDeltas("d7"),
+    d30: aggregateDeltas("d30"),
+  };
 
   const allocationMap: Record<string, number> = {};
   for (const pos of enrichedPositions) {
@@ -432,6 +634,11 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                       Investi : {formatEur(totalCostBasis)}
                     </p>
                   )}
+                  {returns && returns.global.realized_pnl_eur !== 0 && (
+                    <p className="text-[11px] text-emerald-400/90 font-[family-name:var(--font-jetbrains)] mt-0.5" title="Gains encaissés (intérêts + dividendes), même sortis du patrimoine">
+                      PV réalisée : {returns.global.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(returns.global.realized_pnl_eur)}
+                    </p>
+                  )}
                   {returns && (
                     <div className="mt-0.5">
                       <TriBadge
@@ -445,7 +652,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
               )}
             </div>
             <div className="flex flex-col items-end gap-1">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Link href={`${basePath}/projections`}>
                   <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-[#161b22] hover:text-white">
                     Projections
@@ -500,6 +707,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           <StatsBar
             history={history}
             grandTotal={grandTotal}
+            globalDeltas={globalDeltas}
             basePath={basePath}
           />
         )}
@@ -535,6 +743,8 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   grandTotal={grandTotal}
                   tri={returns?.envelopes.find((r) => r.envelope_id === env.id)?.tri_annual ?? null}
                   triCashflowCount={returns?.envelopes.find((r) => r.envelope_id === env.id)?.cashflow_count ?? 0}
+                  deltas={env.deltas}
+                  realizedPnl={returns?.envelopes.find((r) => r.envelope_id === env.id)?.realized_pnl_eur ?? 0}
                 />
               ))}
               {/* Add envelope button */}

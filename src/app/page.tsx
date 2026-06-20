@@ -1,5 +1,6 @@
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { loadPortfolioState } from "@/lib/portfolio-state";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,6 @@ function formatEur(v: number) {
 export default async function HomePage() {
   const allTasks = await db.select().from(schema.tasks).all();
   const deals = await db.select().from(schema.deals).all();
-  const positions = await db.select().from(schema.positions).all();
   const habits = await db.select().from(schema.habits).all();
   const today = new Date().toISOString().split("T")[0];
   const habitLogs = await db.select().from(schema.habitLogs).all();
@@ -39,12 +39,17 @@ export default async function HomePage() {
     .slice(0, 3);
   const pipelineValue = activeDeals.reduce((s, d) => s + (d.value ?? 0), 0);
 
-  // Patrimoine
-  const patrimoineTotal = positions.reduce((sum, p) => {
-    if (p.manual_value) return sum + p.manual_value;
-    if (p.quantity && p.pru) return sum + p.quantity * p.pru;
-    return sum;
-  }, 0);
+  // Patrimoine : on passe par loadPortfolioState qui gère la conversion
+  // multi-devises (USD via Yahoo, MGA via userParams.mga_eur_rate) et
+  // renvoie déjà total_value_eur en EUR. Évite de dupliquer la logique de
+  // conversion et garantit la cohérence avec /perso/patrimoine.
+  let patrimoineTotal = 0;
+  try {
+    const portfolioState = await loadPortfolioState();
+    patrimoineTotal = portfolioState.total_value_eur;
+  } catch (e) {
+    console.warn("Failed to load portfolio state for home page", e);
+  }
 
   // Habits
   const activeHabits = habits.filter((h) => h.active && h.space === "perso");

@@ -26,6 +26,8 @@ import PositionDividends from "@/components/PositionDividends";
 import KebabMenu from "@/components/KebabMenu";
 import Link from "next/link";
 import type { QuotesResult } from "@/lib/quotes";
+import { manualValueToEur } from "@/lib/currency";
+import BusinessProjectionCard from "@/components/BusinessProjectionCard";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -128,6 +130,12 @@ function SortablePositionCard({
               <span className="font-[family-name:var(--font-jetbrains)] text-sm font-bold text-white">
                 {formatEur(pos.value)}
               </span>
+              {/* Sous-ligne MGA pour les positions en ariary (business Madagascar). */}
+              {pos.currency === "MGA" && pos.manual_value !== null && (
+                <p className="text-[10px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
+                  {Math.round(pos.manual_value).toLocaleString("fr-FR")} MGA
+                </p>
+              )}
               {pos.pnl !== null ? (
                 <p className={`font-[family-name:var(--font-jetbrains)] text-xs ${pnlColor(pos.pnl)}`}>
                   {pos.pnl >= 0 ? "+" : ""}{formatEur(pos.pnl)} ({pos.pnlPct !== null ? (pos.pnlPct >= 0 ? "+" : "") + pos.pnlPct.toFixed(1) + "%" : ""})
@@ -230,6 +238,33 @@ function SortablePositionCard({
                   {totalValue > 0 ? ((pos.value / totalValue) * 100).toFixed(1) + "%" : "—"}
                 </p>
               </div>
+              {/* Valeur native (MGA/USD/EUR) pour les positions manual_value :
+                  affichage style CTO (montant dans la devise locale + total
+                  EUR converti déjà visible via pos.value plus haut). */}
+              {pos.manual_value !== null && pos.currency !== "EUR" && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+                    Valeur native ({pos.currency})
+                  </p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-white">
+                    {pos.manual_value.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} {pos.currency}
+                  </p>
+                </div>
+              )}
+              {pos.manual_value !== null && pos.currency !== "EUR" && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+                    Cours {pos.currency}/EUR
+                  </p>
+                  <p className="font-[family-name:var(--font-jetbrains)] text-sm text-gray-300">
+                    {pos.currency === "MGA" && quotes?.mgaEurRate
+                      ? `1 EUR = ${quotes.mgaEurRate.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} MGA`
+                      : pos.currency === "USD" && quotes?.eurUsd
+                        ? `1 EUR = ${quotes.eurUsd.toLocaleString("fr-FR", { maximumFractionDigits: 4 })} USD`
+                        : "—"}
+                  </p>
+                </div>
+              )}
               {pos.manual_value !== null && (
                 <div className="col-span-2 sm:col-span-4">
                   <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Type</p>
@@ -373,7 +408,13 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   useEffect(() => { reloadAlerts(); }, [reloadAlerts, quotes]);
 
   function computeValue(pos: Position) {
-    if (pos.manual_value !== null) return { price: null, value: pos.manual_value, pnl: null, pnlPct: null };
+    if (pos.manual_value !== null) {
+      const valueEur = manualValueToEur(pos.manual_value, pos.currency, {
+        eurUsd: quotes?.eurUsd,
+        mgaEurRate: quotes?.mgaEurRate,
+      });
+      return { price: null, value: valueEur, pnl: null, pnlPct: null };
+    }
     if (!pos.quantity || !pos.pru) return { price: null, value: 0, pnl: null, pnlPct: null };
     const eurUsd = quotes?.eurUsd ?? 1.08;
     const quote = pos.yahoo_ticker && quotes?.quotes[pos.yahoo_ticker];
@@ -406,7 +447,11 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   const [buyTarget, setBuyTarget] = useState<Position | null>(null);
   const [buyQty, setBuyQty] = useState("");
   const [buyPrice, setBuyPrice] = useState("");
-  const [buyIncludeFees, setBuyIncludeFees] = useState(true);
+  // Les frais "Fortuneo Pack Starter" ne s'appliquent qu'aux enveloppes
+  // Fortuneo (PEA/PER Fortuneo). Avant : true par défaut PARTOUT → le PRU d'un
+  // achat sur le CTO Interactive Brokers (ou Binance, Madagascar) était gonflé
+  // par une grille de frais qui n'est pas celle du courtier.
+  const [buyIncludeFees, setBuyIncludeFees] = useState(() => /fortuneo/i.test(envelope.name));
   const [buySubmitting, setBuySubmitting] = useState(false);
 
   // Fortuneo Pack Starter fees
@@ -474,6 +519,7 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   // (approx), et en dernier recours totalValue (ancien comportement). Pour les
   // non-PEA, la jauge reste basée sur totalValue vs target.
   const isPea = envelope.type === "pea";
+  const isFortuneo = /fortuneo/i.test(envelope.name);
   const gaugeBase = isPea
     ? (peaDeposits ?? (envelopeCostBasis > 0 ? envelopeCostBasis : totalValue))
     : totalValue;
@@ -530,6 +576,20 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
               <p className="text-2xl font-bold font-[family-name:var(--font-jetbrains)]" style={{ color: envelope.color }}>
                 {formatEur(totalValue)}
               </p>
+              {/* Total équivalent MGA si l'enveloppe contient des positions en
+                  ariary (typique Madagascar). On somme uniquement les
+                  positions MGA pour ne pas afficher un total bidon si
+                  l'enveloppe mélange EUR + MGA. */}
+              {quotes?.mgaEurRate && positions.some((p) => p.currency === "MGA") && (() => {
+                const mgaTotal = positions
+                  .filter((p) => p.currency === "MGA")
+                  .reduce((s, p) => s + (p.manual_value ?? 0), 0);
+                return (
+                  <p className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)] mt-0.5">
+                    {Math.round(mgaTotal).toLocaleString("fr-FR")} MGA
+                  </p>
+                );
+              })()}
               {hasEnvelopePnl && (
                 <p className={`text-sm font-[family-name:var(--font-jetbrains)] mt-0.5 ${envelopePnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {envelopePnl >= 0 ? "+" : ""}{formatEur(envelopePnl)}
@@ -540,9 +600,16 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                 const row = returns.envelopes.find((r) => r.envelope_id === envelope.id);
                 if (!row) return null;
                 return (
-                  <div className="mt-0.5">
-                    <TriBadge tri={row.tri_annual} cashflowCount={row.cashflow_count} coverage={row.coverage} />
-                  </div>
+                  <>
+                    {row.realized_pnl_eur !== 0 && (
+                      <p className="text-xs text-emerald-400/90 font-[family-name:var(--font-jetbrains)] mt-0.5" title="Gains encaissés (intérêts + dividendes), même sortis de l'enveloppe">
+                        PV réalisée : {row.realized_pnl_eur >= 0 ? "+" : ""}{formatEur(row.realized_pnl_eur)}
+                      </p>
+                    )}
+                    <div className="mt-0.5">
+                      <TriBadge tri={row.tri_annual} cashflowCount={row.cashflow_count} coverage={row.coverage} />
+                    </div>
+                  </>
                 );
               })()}
             </div>
@@ -560,6 +627,28 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
             </div>
           </div>
         </div>
+
+        {/* Badge taux MGA/EUR — visible si au moins une position en MGA dans
+            l'enveloppe (typiquement Business Madagascar). Source : open.er-api
+            avec fallback Yahoo, mis à jour à chaque fetch quotes (cache 15min). */}
+        {positions.some((p) => p.currency === "MGA") && quotes?.mgaEurRate && (
+          <div className="bg-[#0d1117] border border-gray-800 rounded-lg px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-baseline gap-3">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                Taux du jour
+              </span>
+              <span className="text-sm font-[family-name:var(--font-jetbrains)] text-white">
+                1 EUR = {quotes.mgaEurRate.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} MGA
+              </span>
+              <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
+                · 1 000 MGA ≈ {(1000 / quotes.mgaEurRate).toFixed(3).replace(".", ",")} €
+              </span>
+            </div>
+            <span className="text-[10px] text-gray-600">
+              source open.er-api.com (mise à jour quotidienne)
+            </span>
+          </div>
+        )}
 
         {/* F3: Objective gauge */}
         {showGauge && (
@@ -600,6 +689,18 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
               <span className="text-white font-[family-name:var(--font-jetbrains)] text-sm">{formatEur(envelope.annual_contrib)}</span>
             </CardContent>
           </Card>
+        )}
+
+        {/* Carte "Bénéfices attendus" pour les enveloppes business (Madagascar).
+            Calcule par deal les flux espérés sur les 12 prochains mois en se
+            basant sur des règles hardcodées par ticker — extensible plus tard
+            via un champ `notes` JSON sur position. */}
+        {envelope.type === "business" && (
+          <BusinessProjectionCard
+            positions={enriched}
+            envelope={envelope}
+            mgaEurRate={quotes?.mgaEurRate}
+          />
         )}
 
         {/* Envelope-level historical chart */}
@@ -721,12 +822,16 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                   </div>
                 </div>
 
-                {/* Fortuneo fees toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={buyIncludeFees} onChange={(e) => setBuyIncludeFees(e.target.checked)}
-                    className="rounded border-gray-600 bg-[#161b22] text-emerald-500 focus:ring-emerald-500" />
-                  <span className="text-xs text-gray-400">Inclure frais Fortuneo (Pack Starter)</span>
-                </label>
+                {/* Frais Fortuneo : pertinents uniquement pour les enveloppes
+                    Fortuneo (PEA/PER). Masqué ailleurs (CTO IBKR, Binance, …)
+                    pour ne pas appliquer une grille de frais erronée. */}
+                {isFortuneo && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={buyIncludeFees} onChange={(e) => setBuyIncludeFees(e.target.checked)}
+                      className="rounded border-gray-600 bg-[#161b22] text-emerald-500 focus:ring-emerald-500" />
+                    <span className="text-xs text-gray-400">Inclure frais Fortuneo (Pack Starter)</span>
+                  </label>
+                )}
 
                 {qty > 0 && price > 0 && (
                   <div className="bg-[#161b22] rounded-lg p-3 text-sm space-y-2">

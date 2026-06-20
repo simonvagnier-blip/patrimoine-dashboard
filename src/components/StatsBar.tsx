@@ -13,6 +13,12 @@ import type { DividendSummary } from "@/lib/dividends-types";
 interface Snapshot {
   date: string;
   total_value: number;
+  /**
+   * Capital investi à la date du snapshot (cost basis hors plus-values latentes).
+   * Permet de calculer la VRAIE PL = total - investi, et donc le delta de PL
+   * pure entre deux dates (sans le bruit des injections de capital).
+   */
+  invested_total?: number | null;
 }
 
 interface MiniSummary {
@@ -42,10 +48,22 @@ function eur(v: number, d = 0): string {
 export default function StatsBar({
   history,
   grandTotal,
+  globalDeltas,
   basePath = "",
 }: {
   history: Snapshot[];
   grandTotal: number;
+  /**
+   * Performance marché PURE agrégée sur 1J/7J/30J. Calculé en amont dans
+   * DashboardClient comme somme des perfs marché pures par enveloppe (en
+   * excluant les contributions externes : achats, dépôts, retraits). Si null
+   * pour une période, c'est qu'on n'a pas assez d'historique.
+   */
+  globalDeltas?: {
+    d1: { perfEur: number; pct: number } | null;
+    d7: { perfEur: number; pct: number } | null;
+    d30: { perfEur: number; pct: number } | null;
+  };
   basePath?: string;
 }) {
   const [dividends, setDividends] = useState<DividendSummary | null>(null);
@@ -66,32 +84,16 @@ export default function StatsBar({
   const hasSavings = !!savings && savings.averages.months_with_data > 0;
   const savingsPositive = savings ? savings.averages.avg_savings_eur >= 0 : true;
 
-  // Deltas sur 1j / 7j / 30j : on cherche le snapshot le plus récent
-  // dont la date est ≤ maintenant - N jours (pour éviter de comparer à
-  // un snapshot intra-journée qui fausserait le 1j).
-  const sortedHistory = [...history].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  );
-
-  function deltaSince(days: number): { delta: number; pct: number | null } | null {
-    const target = Date.now() - days * 86400000;
-    let snapshot: Snapshot | null = null;
-    for (const s of sortedHistory) {
-      if (new Date(s.date).getTime() <= target) snapshot = s;
-      else break;
-    }
-    if (!snapshot) return null;
-    const delta = grandTotal - snapshot.total_value;
-    const pct =
-      snapshot.total_value > 0 ? (delta / snapshot.total_value) * 100 : null;
-    return { delta, pct };
-  }
-
-  const deltas = [
-    { label: "1j", data: deltaSince(1) },
-    { label: "7j", data: deltaSince(7) },
-    { label: "30j", data: deltaSince(30) },
-  ];
+  // Deltas 1J/7J/30J : on lit directement les perfs marché pures pré-calculées
+  // par DashboardClient (somme des perfs par enveloppe, contributions exclues).
+  // C'est la même formule que les cards → cohérent partout.
+  const deltas = globalDeltas
+    ? [
+        { label: "1j", data: globalDeltas.d1 },
+        { label: "7j", data: globalDeltas.d7 },
+        { label: "30j", data: globalDeltas.d30 },
+      ]
+    : [];
   const hasDelta = deltas.some((d) => d.data !== null);
 
   const hasSparkline = history.length > 2;
@@ -148,7 +150,7 @@ export default function StatsBar({
 
   if (hasDelta) {
     pills.push(
-      <div key="delta" className="flex items-baseline gap-3">
+      <div key="delta" className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
         {deltas.map(({ label, data }) => (
           <div key={label} className="flex items-baseline gap-1.5">
             <span className="text-[10px] uppercase tracking-wider text-gray-500">
@@ -158,18 +160,16 @@ export default function StatsBar({
               <>
                 <span
                   className={`text-sm font-semibold font-[family-name:var(--font-jetbrains)] ${
-                    data.delta >= 0 ? "text-emerald-400" : "text-red-400"
+                    data.perfEur >= 0 ? "text-emerald-400" : "text-red-400"
                   }`}
                 >
-                  {data.delta >= 0 ? "+" : ""}
-                  {eur(data.delta)}
+                  {data.perfEur >= 0 ? "+" : ""}
+                  {eur(data.perfEur)}
                 </span>
-                {data.pct !== null && (
-                  <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
-                    ({data.pct >= 0 ? "+" : ""}
-                    {data.pct.toFixed(1)}%)
-                  </span>
-                )}
+                <span className="text-[11px] text-gray-500 font-[family-name:var(--font-jetbrains)]">
+                  ({data.pct >= 0 ? "+" : ""}
+                  {data.pct.toFixed(1)}%)
+                </span>
               </>
             ) : (
               <span
@@ -194,7 +194,7 @@ export default function StatsBar({
         </Fragment>
       ))}
       {hasSparkline && (
-        <div className="ml-auto w-32 h-7 min-w-[100px]">
+        <div className="hidden sm:block ml-auto w-32 h-7 min-w-[100px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={history.map((s) => ({ date: s.date, value: s.total_value }))}

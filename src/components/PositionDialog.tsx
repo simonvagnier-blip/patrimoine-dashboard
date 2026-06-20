@@ -21,6 +21,8 @@ const SCENARIO_OPTIONS_MANUAL = [
   { value: "fg", label: "Fonds garanti" },
   { value: "fe", label: "Fonds euros" },
   { value: "cash", label: "Cash" },
+  { value: "cash_mga", label: "Cash Mada (MGA)" },
+  { value: "business", label: "Business (privé)" },
 ];
 
 type PositionMode = "quoted" | "manual";
@@ -67,7 +69,7 @@ const emptyForm = (envelopeId: string): PositionFormData => ({
 
 function detectMode(pos: { manual_value: number | null; scenario_key: string } | null): PositionMode {
   if (!pos) return "quoted";
-  if (pos.manual_value !== null || ["fg", "fe", "cash"].includes(pos.scenario_key)) return "manual";
+  if (pos.manual_value !== null || ["fg", "fe", "cash", "cash_mga", "business"].includes(pos.scenario_key)) return "manual";
   return "quoted";
 }
 

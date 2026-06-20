@@ -101,14 +101,24 @@ export async function GET(request: NextRequest) {
   // EUR/USD spot (used for USD positions)
   const eurUsd = await fetchEurUsd(rangeConfig.period1, rangeConfig.interval);
 
+  // Taux MGA → EUR pour les positions en MGA (business Madagascar).
+  // Source : userParams.mga_eur_rate, défaut 4800.
+  const rateRow = await db.select().from(schema.userParams).where(eq(schema.userParams.key, "mga_eur_rate")).get();
+  const mgaEurRate = rateRow?.value ? parseFloat(rateRow.value) : 4800;
+
   // Static "base" value = sum of positions that have no yahoo_ticker but a
-  // manual_value (fonds euros, livrets, etc.). This stays flat across the
-  // whole period and gets added to every point.
+  // manual_value (fonds euros, livrets, business Madagascar, etc.). Converti
+  // en EUR selon la devise pour ne pas exploser les graphes (manual_value en
+  // MGA est en dizaines de millions !).
   let manualBase = 0;
   const tradedPositions: typeof positions = [];
   for (const p of positions) {
     if (!p.yahoo_ticker) {
-      if (typeof p.manual_value === "number") manualBase += p.manual_value;
+      if (typeof p.manual_value === "number") {
+        if (p.currency === "MGA") manualBase += p.manual_value / mgaEurRate;
+        else if (p.currency === "USD") manualBase += p.manual_value / eurUsd;
+        else manualBase += p.manual_value;
+      }
     } else if (typeof p.quantity === "number" && p.quantity > 0) {
       tradedPositions.push(p);
     }

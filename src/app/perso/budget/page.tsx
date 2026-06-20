@@ -100,12 +100,13 @@ export default function BudgetPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Défaut du filtre date : mois courant
+  // Défaut du filtre date : début du mois de la transaction LA PLUS RÉCENTE.
+  // (Avant : 1er du mois courant → "Aucune transaction" à l'ouverture si le mois
+  //  en cours n'a pas encore d'opérations importées, alors que 2882 existent.)
   useEffect(() => {
     if (!dateFrom && !dateTo && entries.length > 0) {
-      const now = new Date();
-      const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      setDateFrom(first);
+      const maxDate = entries.reduce((mx, e) => (e.date > mx ? e.date : mx), entries[0].date);
+      setDateFrom(maxDate.slice(0, 7) + "-01");
     }
   }, [entries.length, dateFrom, dateTo]);
 

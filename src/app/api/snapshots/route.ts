@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +54,49 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       })
       .run();
+  }
+
+  // Synchronise aussi envelope_snapshots : pour chaque enveloppe présente
+  // dans details, upsert la valeur du jour. Évite que la courbe par enveloppe
+  // soit en retard d'un jour (sinon dépend uniquement du cron nocturne) et
+  // que la card du dashboard et le graph détaillé divergent.
+  if (body.details && typeof body.details === "object") {
+    const nowIso = new Date().toISOString();
+    for (const [envelopeId, value] of Object.entries(body.details)) {
+      if (typeof value !== "number" || value < 0) continue;
+      const existingEnv = await db
+        .select()
+        .from(schema.envelopeSnapshots)
+        .where(
+          and(
+            eq(schema.envelopeSnapshots.envelope_id, envelopeId),
+            eq(schema.envelopeSnapshots.date, today),
+          ),
+        )
+        .get();
+      if (existingEnv) {
+        await db
+          .update(schema.envelopeSnapshots)
+          .set({ value_eur: value })
+          .where(
+            and(
+              eq(schema.envelopeSnapshots.envelope_id, envelopeId),
+              eq(schema.envelopeSnapshots.date, today),
+            ),
+          )
+          .run();
+      } else {
+        await db
+          .insert(schema.envelopeSnapshots)
+          .values({
+            envelope_id: envelopeId,
+            date: today,
+            value_eur: value,
+            created_at: nowIso,
+          })
+          .run();
+      }
+    }
   }
 
   return NextResponse.json({ success: true });

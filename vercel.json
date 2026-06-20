@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/snapshot-envelopes",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/business-income",
+      "schedule": "0 6 21 * *"
     }
   ]
 }

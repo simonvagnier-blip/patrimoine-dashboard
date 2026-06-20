@@ -4,14 +4,17 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow login page, auth API, Google OAuth callback, debug, cron jobs,
-  // and MCP data endpoints (both carry their own bearer-token check).
+  // MCP data endpoints (bearer check), OAuth server endpoints (gèrent leur
+  // propre auth — login page / DCR / token / discovery).
   if (
     pathname === "/login" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/google") ||
     pathname.startsWith("/api/debug-env") ||
     pathname.startsWith("/api/cron") ||
-    pathname.startsWith("/api/mcp")
+    pathname.startsWith("/api/mcp") ||
+    pathname.startsWith("/api/oauth") ||
+    pathname.startsWith("/.well-known/")
   ) {
     return NextResponse.next();
   }

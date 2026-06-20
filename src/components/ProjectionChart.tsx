@@ -117,15 +117,22 @@ export default function ProjectionChart({
   const chartData: Record<string, string | number | null>[] = [];
 
   // Add history points
+  // IMPORTANT : on skip les mois qui se rounding au même âge que today
+  // (currentAge), parce que la boucle projection ci-dessous AJOUTE déjà une
+  // entrée à cet âge via history[length-1]. Sans ce skip, plusieurs entrées
+  // partagent le même label X "32 ans" → Recharts les empile et affiche le
+  // tooltip du leftmost (le plus ancien snapshot), ce qui donne l'illusion
+  // que la valeur live n'est pas appliquée.
   for (const monthKey of historyMonths) {
     const [y, m] = monthKey.split("-").map(Number);
-    // Calculate fractional years before today
     const monthsDiff = (currentYear - y) * 12 + (currentMonth - (m - 1));
     const yearsDiff = monthsDiff / 12;
     const age = currentAge - yearsDiff;
+    const ageRounded = Math.round(age);
+    if (ageRounded === currentAge) continue;
 
     chartData.push({
-      year: `${Math.round(age)} ans`,
+      year: `${ageRounded} ans`,
       label: monthKey,
       history: Math.round(historyByMonth[monthKey]),
       history_invested: investedByMonth[monthKey] != null ? Math.round(investedByMonth[monthKey]!) : null,

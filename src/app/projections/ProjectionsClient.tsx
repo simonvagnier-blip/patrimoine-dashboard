@@ -21,6 +21,7 @@ import {
   type SimulationInput,
 } from "@/lib/simulation";
 import type { QuotesResult } from "@/lib/quotes";
+import { manualValueToEur } from "@/lib/currency";
 import Link from "next/link";
 
 interface Envelope {
@@ -129,7 +130,12 @@ export default function ProjectionsClient({
 
   // Compute current value per position
   function posValue(pos: Position): number {
-    if (pos.manual_value !== null) return pos.manual_value;
+    if (pos.manual_value !== null) {
+      return manualValueToEur(pos.manual_value, pos.currency, {
+        eurUsd: quotes?.eurUsd,
+        mgaEurRate: quotes?.mgaEurRate,
+      });
+    }
     if (!pos.quantity || !pos.pru) return 0;
     const eurUsd = quotes?.eurUsd ?? 1.08;
     const quote = pos.yahoo_ticker && quotes?.quotes[pos.yahoo_ticker];
@@ -187,7 +193,12 @@ export default function ProjectionsClient({
         env.type === "livrets"
           ? 0
           : envPositions.reduce((sum, p) => {
-              if (p.manual_value !== null) return sum + p.manual_value;
+              if (p.manual_value !== null) {
+                return sum + manualValueToEur(p.manual_value, p.currency, {
+                  eurUsd: quotes?.eurUsd,
+                  mgaEurRate: quotes?.mgaEurRate,
+                });
+              }
               return sum + posCostBasis(p);
             }, 0);
       return {
@@ -223,8 +234,12 @@ export default function ProjectionsClient({
     let invested = 0;
     for (const pos of positions) {
       if (pos.manual_value !== null) {
-        total += pos.manual_value;
-        invested += pos.manual_value;
+        const valEur = manualValueToEur(pos.manual_value, pos.currency, {
+          eurUsd: quotes?.eurUsd,
+          mgaEurRate: quotes?.mgaEurRate,
+        });
+        total += valEur;
+        invested += valEur;
         continue;
       }
       if (!pos.quantity || !pos.pru) continue;
@@ -247,6 +262,20 @@ export default function ProjectionsClient({
     const pvPct = invested > 0 ? (pv / invested) * 100 : 0;
     return { totalValue: total, investedCapital: invested, plusValue: pv, plusValuePct: pvPct };
   }, [positions, quotes]);
+
+  // Override le point d'aujourd'hui de l'historique avec les valeurs live
+  // (cf commentaire détaillé dans /perso/patrimoine/projections/ProjectionsClient).
+  const liveHistory = useMemo<HistoryPoint[]>(() => {
+    if (!quotes || totalValue <= 0) return history;
+    const today = new Date().toISOString().split("T")[0];
+    const todayPoint: HistoryPoint = {
+      date: today,
+      total_value: totalValue,
+      invested_total: investedCapital,
+    };
+    const filtered = history.filter((h) => h.date < today);
+    return [...filtered, todayPoint];
+  }, [history, totalValue, investedCapital, quotes]);
 
   // R11: Auto-save params with debounce
   const autoSave = useCallback(async () => {
@@ -424,7 +453,7 @@ export default function ProjectionsClient({
               horizonYears={Math.max(...HORIZONS)}
               currentAge={currentAge}
               retireAge={retireAge}
-              history={history}
+              history={liveHistory}
             />
           </CardContent>
         </Card>

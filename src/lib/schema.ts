@@ -254,6 +254,49 @@ export const budgetEntries = sqliteTable("budget_entries", {
 });
 
 /**
+ * OAuth 2.1 server tables — pour permettre à claude.ai (et autres clients qui
+ * font de la Dynamic Client Registration RFC 7591) de s'authentifier auprès
+ * de notre serveur MCP. Le serveur agit à la fois comme Authorization Server
+ * (émet codes + tokens) et Resource Server (vérifie les tokens sur /api/mcp).
+ *
+ * Flow :
+ *   1. claude.ai POST /api/oauth/register → reçoit client_id + client_secret
+ *   2. claude.ai redirige l'user sur /api/oauth/authorize (GET → form login)
+ *   3. User entre DASHBOARD_PASSWORD, valide → on génère un code et redirect
+ *   4. claude.ai échange le code contre un token via POST /api/oauth/token
+ *   5. claude.ai utilise ce token comme Bearer sur /api/mcp
+ *
+ * Single-user app : pas de notion d'user_id côté tokens. Tous les tokens
+ * accordent l'accès complet (équivalent au DASHBOARD_PASSWORD).
+ */
+export const oauthClients = sqliteTable("oauth_clients", {
+  client_id: text("client_id").primaryKey(),
+  client_secret_hash: text("client_secret_hash"), // null pour public clients (PKCE)
+  client_name: text("client_name"),
+  redirect_uris: text("redirect_uris").notNull(), // JSON array
+  created_at: text("created_at").notNull(),
+});
+
+export const oauthCodes = sqliteTable("oauth_codes", {
+  code: text("code").primaryKey(),
+  client_id: text("client_id").notNull(),
+  redirect_uri: text("redirect_uri").notNull(),
+  scope: text("scope"),
+  pkce_challenge: text("pkce_challenge"),
+  pkce_method: text("pkce_method").default("S256"),
+  expires_at: integer("expires_at").notNull(), // unix ms
+  used: integer("used").notNull().default(0),
+});
+
+export const oauthTokens = sqliteTable("oauth_tokens", {
+  token: text("token").primaryKey(),
+  client_id: text("client_id").notNull(),
+  scope: text("scope"),
+  expires_at: integer("expires_at").notNull(), // unix ms
+  created_at: text("created_at").notNull(),
+});
+
+/**
  * Règles de catégorisation personnalisées : quand l'utilisateur re-catégorise
  * une ligne du budget, on peut créer une règle "tous les libellés matchant
  * X → catégorie Y" qui s'applique aux entrées existantes ET à tous les futurs
