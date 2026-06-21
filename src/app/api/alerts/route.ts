@@ -28,7 +28,43 @@ export async function GET(request: NextRequest) {
 
   if (evaluate) {
     const data = await evaluateAlerts();
-    let alerts = data.alerts;
+    let alerts = [...data.alerts];
+
+    // Alerte CALCULÉE : plafond de versements PEA (150 000 € légal). Se déclenche
+    // quand les versements cumulés approchent le plafond. Source de vérité :
+    // userParams.peaVersements (saisi sur la page fiscal). Pas une alerte stockée
+    // (id négatif synthétique) → calculée à la volée à chaque évaluation.
+    try {
+      const peaRow = await db
+        .select()
+        .from(schema.userParams)
+        .where(eq(schema.userParams.key, "peaVersements"))
+        .get();
+      const versements = peaRow?.value ? parseFloat(peaRow.value) : NaN;
+      const PEA_CAP = 150000;
+      const PEA_WARN_RATIO = 0.85; // alerte à 85 % du plafond
+      if (!isNaN(versements) && versements > 0) {
+        const pct = Math.round((versements / PEA_CAP) * 100);
+        alerts.push({
+          id: -1,
+          envelope_id: "pea",
+          position_id: null,
+          type: "envelope_value_above",
+          threshold: Math.round(PEA_CAP * PEA_WARN_RATIO),
+          note: "Plafond de versements PEA (150 000 €)",
+          active: true,
+          last_triggered_at: null,
+          current_value: Math.round(versements),
+          triggered: versements >= PEA_CAP * PEA_WARN_RATIO,
+          label: `Plafond PEA bientôt atteint : ${pct} % (${Math.round(versements).toLocaleString("fr-FR")} / 150 000 € versés)`,
+          scope_label: "PEA",
+          unit: "€",
+        });
+      }
+    } catch {
+      // pas de plafond PEA calculable → on ignore
+    }
+
     if (positionId) alerts = alerts.filter((a) => a.position_id === parseInt(positionId));
     if (envelopeId) alerts = alerts.filter((a) => a.envelope_id === envelopeId);
     return NextResponse.json({ ...data, alerts });

@@ -803,7 +803,8 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         {!noPositions && (
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader>
-            <CardTitle className="text-white">Répartition par classe d&apos;actifs</CardTitle>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Répartition</p>
+            <CardTitle className="text-sm text-gray-200 font-medium">Par classe d&apos;actifs</CardTitle>
           </CardHeader>
           <CardContent>
             <AllocationDonut data={allocationData} hideAmounts={hideAmounts} />
@@ -815,10 +816,11 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         {!noPositions && (
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader>
-            <CardTitle className="text-white">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Détail</p>
+            <CardTitle className="text-sm text-gray-200 font-medium">
               Toutes les positions
-              <span className="text-sm font-normal text-gray-400 ml-2">
-                ({filteredPositions.length} lignes)
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                ({filteredPositions.length})
               </span>
             </CardTitle>
             {/* R9: Envelope filter badges */}
