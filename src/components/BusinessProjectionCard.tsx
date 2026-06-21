@@ -10,6 +10,7 @@ import {
   Tooltip as RTooltip,
   ReferenceLine,
 } from "recharts";
+import { DEAL_RULES } from "@/lib/business-deals";
 
 interface BusinessPosition {
   id: number;
@@ -29,53 +30,9 @@ interface BusinessEnvelope {
 
 /**
  * Carte de projection des bénéfices attendus pour une enveloppe "business".
- *
- * Pour chaque deal (= position), on encode un descripteur des cashflows
- * espérés. Pour l'instant : hardcodé par ticker, à généraliser plus tard
- * via un champ `notes` JSON sur la position quand l'utilisateur aura plus
- * de deals à tracker.
- *
- * Types de deals supportés :
- *   - loan        : prêt à intérêt mensuel. yield_pct / mois × principal,
- *                   partagé selon my_share_pct jusqu'à exit_date.
- *   - one_shot    : sortie unique. principal × exit_multiple - principal
- *                   à exit_date, partagé selon my_share_pct.
- *   - cash        : pas de croissance attendue (cagnotte de réception).
+ * Les règles de deal (DEAL_RULES) sont désormais dans @/lib/business-deals
+ * (source unique partagée avec les alertes d'échéance).
  */
-
-interface DealRule {
-  type: "loan" | "one_shot" | "cash";
-  monthly_yield_pct?: number; // 10 = 10%
-  exit_multiple?: number; // 1.5 = +50%
-  my_share_pct?: number; // 50 = je touche 50% des bénéfices
-  exit_date?: string; // YYYY-MM-DD
-  description?: string;
-}
-
-/**
- * Règles par défaut, par ticker. À sortir dans la DB (notes JSON par position)
- * dès que l'utilisateur en a plus que 3.
- */
-const DEAL_RULES: Record<string, DealRule> = {
-  "TEX-LOAN": {
-    type: "loan",
-    monthly_yield_pct: 10,
-    my_share_pct: 50,
-    exit_date: "2026-12-31",
-    description: "Prêt à 10%/mois × 50% de part, capital remb. à terme",
-  },
-  "HAR-S26": {
-    type: "one_shot",
-    exit_multiple: 1.5,
-    my_share_pct: 50,
-    exit_date: "2026-09-30",
-    description: "Avance semences, vente +50% en septembre, 50% de part",
-  },
-  "CASH-MGA": {
-    type: "cash",
-    description: "Réception des intérêts mensuels et plus-values",
-  },
-};
 
 function formatEur(v: number, d = 0): string {
   return v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: d });

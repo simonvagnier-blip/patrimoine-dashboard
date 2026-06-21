@@ -91,7 +91,7 @@ export default function FillTargetWidget({
           <Link
             key={env.id}
             href={`${basePath}/envelope/${env.id}`}
-            className={`block bg-[#0d1117] border ${tone} rounded-lg p-3 hover:border-gray-600 transition-colors`}
+            className={`block bg-[#11161f] border ${tone} rounded-lg p-3 hover:border-gray-600 transition-colors`}
           >
             <div className="flex items-baseline justify-between mb-2">
               <div className="flex items-center gap-2 min-w-0">

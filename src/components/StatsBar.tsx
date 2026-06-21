@@ -153,7 +153,7 @@ export default function StatsBar({
               </>
             ) : (
               <span
-                className="text-sm text-gray-600 font-[family-name:var(--font-jetbrains)]"
+                className="text-sm text-gray-500 font-[family-name:var(--font-jetbrains)]"
                 title="Pas assez d'historique"
               >
                 —
@@ -166,7 +166,7 @@ export default function StatsBar({
   }
 
   return (
-    <div className="bg-[#0d1117] border border-gray-800 rounded-lg px-4 py-2.5 flex items-center gap-3 flex-wrap">
+    <div className="bg-[#11161f] border border-gray-800 rounded-lg px-4 py-2.5 flex items-center gap-3 flex-wrap">
       {pills.map((pill, i) => (
         <Fragment key={i}>
           {i > 0 && <div className="w-px h-5 bg-gray-800" />}

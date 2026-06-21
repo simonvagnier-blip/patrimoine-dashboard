@@ -249,7 +249,7 @@ function SortableEnvelopeCard({
         </svg>
       </button>
       <Link href={`${basePath}/envelope/${env.id}`}>
-        <Card className="bg-[#0d1117] border-gray-800 hover:border-gray-600 transition-colors cursor-pointer h-full">
+        <Card className="bg-[#11161f] border-gray-800 hover:border-gray-600 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer h-full">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-400 flex items-center">
               <span className="inline-block w-2 h-2 rounded-full mr-2 shrink-0" style={{ backgroundColor: env.color }} />
@@ -280,8 +280,8 @@ function SortableEnvelopeCard({
                       const v = deltas[k];
                       if (!v) {
                         return (
-                          <span key={k} className="text-gray-600">
-                            <span className="text-gray-500">{lbl}</span> —
+                          <span key={k} className="text-gray-500">
+                            <span className="text-gray-400">{lbl}</span> —
                           </span>
                         );
                       }
@@ -801,7 +801,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
 
         {/* Allocation Donut — masqué sur install vierge (rien à répartir) */}
         {!noPositions && (
-        <Card className="bg-[#0d1117] border-gray-800">
+        <Card className="bg-[#11161f] border-gray-800">
           <CardHeader>
             <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Répartition</p>
             <CardTitle className="text-sm text-gray-200 font-medium">Par classe d&apos;actifs</CardTitle>
@@ -814,7 +814,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
 
         {/* R9: Positions Table with filters */}
         {!noPositions && (
-        <Card className="bg-[#0d1117] border-gray-800">
+        <Card className="bg-[#11161f] border-gray-800">
           <CardHeader>
             <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Détail</p>
             <CardTitle className="text-sm text-gray-200 font-medium">
@@ -858,7 +858,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
 
       {/* Create Envelope Dialog */}
       <Dialog open={createEnvOpen} onOpenChange={setCreateEnvOpen}>
-        <DialogContent className="bg-[#0d1117] border-gray-800 text-white max-w-sm">
+        <DialogContent className="bg-[#11161f] border-gray-800 text-white max-w-sm">
           <DialogHeader>
             <DialogTitle>Nouvelle enveloppe</DialogTitle>
           </DialogHeader>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { evaluateAlerts } from "@/lib/alerts";
+import { upcomingDealDeadlines } from "@/lib/business-deals";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,37 @@ export async function GET(request: NextRequest) {
       }
     } catch {
       // pas de plafond PEA calculable → on ignore
+    }
+
+    // Alertes CALCULÉES : échéances des deals business (Madagascar). Pour chaque
+    // deal DÉTENU (position existante) dont la date de sortie tombe dans ≤ 60
+    // jours, on lève une alerte. Dormante tant qu'aucune échéance n'approche.
+    try {
+      const deadlines = upcomingDealDeadlines(new Date(), 60);
+      if (deadlines.length > 0) {
+        const posRows = await db.select().from(schema.positions).all();
+        const held = new Map(posRows.map((p) => [p.ticker, p.envelope_id]));
+        deadlines.forEach((d, idx) => {
+          if (!held.has(d.ticker)) return;
+          alerts.push({
+            id: -100 - idx,
+            envelope_id: held.get(d.ticker) ?? null,
+            position_id: null,
+            type: "envelope_value_above",
+            threshold: 0,
+            note: d.description ?? null,
+            active: true,
+            last_triggered_at: null,
+            current_value: null,
+            triggered: true,
+            label: `Échéance ${d.ticker} dans ${d.days_left} j (${d.exit_date})${d.description ? " — " + d.description : ""}`,
+            scope_label: "Madagascar",
+            unit: "€",
+          });
+        });
+      }
+    } catch {
+      // pas d'échéance calculable → on ignore
     }
 
     if (positionId) alerts = alerts.filter((a) => a.position_id === parseInt(positionId));
