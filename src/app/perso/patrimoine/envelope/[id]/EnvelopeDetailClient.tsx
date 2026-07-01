@@ -29,6 +29,7 @@ import type { QuotesResult } from "@/lib/quotes";
 import { manualValueToEur } from "@/lib/currency";
 import BusinessProjectionCard from "@/components/BusinessProjectionCard";
 import BenchmarkPanel from "@/components/BenchmarkPanel";
+import IbkrPanel from "@/components/IbkrPanel";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -721,6 +722,9 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
         {envelope.type !== "livrets" && envelope.type !== "business" && (
           <BenchmarkPanel envelopeId={envelope.id} color={envelope.color} />
         )}
+
+        {/* C5 — Import automatique IBKR (setup / sync / réconciliation) */}
+        {envelope.type === "cto" && <IbkrPanel />}
 
         {/* Positions Table */}
         <Card className="bg-[#0d1117] border-gray-800">
