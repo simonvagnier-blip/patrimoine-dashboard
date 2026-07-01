@@ -70,6 +70,8 @@ export async function PUT(request: NextRequest) {
       manual_value: body.manual_value ?? null,
       scenario_key: body.scenario_key,
       currency: body.currency ?? undefined,
+      // tags : JSON array sérialisé ; undefined = pas touché, null = effacé
+      tags: body.tags === undefined ? undefined : body.tags === null ? null : JSON.stringify(body.tags),
       updated_at: now,
     })
     .where(eq(schema.positions.id, body.id))

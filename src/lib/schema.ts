@@ -31,6 +31,9 @@ export const positions = sqliteTable("positions", {
   manual_value: real("manual_value"),
   scenario_key: text("scenario_key").notNull(),
   currency: text("currency").notNull().default("EUR"),
+  // C6 — thèses d'investissement : JSON array de tags (ex: ["photonique"]).
+  // Orthogonal à scenario_key (classe d'actifs) et à l'enveloppe.
+  tags: text("tags"),
   sort_order: integer("sort_order").notNull().default(0),
   created_at: text("created_at")
     .notNull()
