@@ -433,6 +433,10 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
 
   const enriched = positions.map((pos) => ({ ...pos, ...computeValue(pos) }));
   const totalValue = enriched.reduce((sum, p) => sum + p.value, 0);
+  // Positions soldées (quantity=0, convention -SOLD) : sorties de la liste
+  // principale, repliées en bas — l'historique reste intact en base.
+  const activeEnriched = enriched.filter((p) => p.quantity !== 0);
+  const soldEnriched = enriched.filter((p) => p.quantity === 0);
 
   // Envelope-level P&L
   const envelopePnl = enriched.reduce((sum, p) => sum + (p.pnl ?? 0), 0);
@@ -442,6 +446,9 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
   }, 0);
   const envelopePnlPct = envelopeCostBasis > 0 ? (envelopePnl / envelopeCostBasis) * 100 : 0;
   const hasEnvelopePnl = enriched.some((p) => p.pnl !== null);
+
+  // Section "positions soldées" repliée par défaut
+  const [showSold, setShowSold] = useState(false);
 
   // Buy dialog state
   const [buyTarget, setBuyTarget] = useState<Position | null>(null);
@@ -711,14 +718,14 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
         {/* Positions Table */}
         <Card className="bg-[#0d1117] border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-white">Positions <span className="text-sm font-normal text-gray-400 ml-2">({positions.length})</span></CardTitle>
+            <CardTitle className="text-white">Positions <span className="text-sm font-normal text-gray-400 ml-2">({activeEnriched.length})</span></CardTitle>
             <Button size="sm" onClick={handleAdd} className="bg-emerald-600 hover:bg-emerald-700 text-white">+ Ajouter</Button>
           </CardHeader>
           <Separator className="bg-gray-800" />
           <CardContent className="pt-4 space-y-3">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <DndContext id="positions-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={enriched.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                {enriched.map((pos) => (
+                {activeEnriched.map((pos) => (
                   <SortablePositionCard
                     key={pos.id}
                     pos={pos}
@@ -743,9 +750,52 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
                     onAlertsChanged={reloadAlerts}
                   />
                 ))}
+                {/* Positions soldées — repliées par défaut, mêmes cartes (TRI,
+                    historique, ré-achat possible), dans le même DndContext. */}
+                {soldEnriched.length > 0 && (
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setShowSold((v) => !v)}
+                      aria-expanded={showSold}
+                      className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-200 transition-colors py-2"
+                    >
+                      <span className={`inline-block transition-transform ${showSold ? "rotate-90" : ""}`}>▸</span>
+                      Positions soldées ({soldEnriched.length})
+                    </button>
+                    {showSold && (
+                      <div className="space-y-3 mt-1 opacity-80">
+                        {soldEnriched.map((pos) => (
+                          <SortablePositionCard
+                            key={pos.id}
+                            pos={pos}
+                            isExpanded={expandedId === pos.id}
+                            onToggle={() => setExpandedId(expandedId === pos.id ? null : pos.id)}
+                            quotes={quotes}
+                            totalValue={totalValue}
+                            pnlColor={pnlColor}
+                            onBuy={(p) => { setBuyTarget(p); setBuyQty(""); setBuyPrice(""); }}
+                            onEdit={handleEdit}
+                            onDelete={setDeleteTarget}
+                            triRow={(() => {
+                              const r = returns?.positions.find((rp) => rp.position_id === pos.id);
+                              if (!r) return null;
+                              return {
+                                tri_annual: r.tri_annual,
+                                cashflow_count: r.cashflow_count,
+                                coverage: r.coverage,
+                              };
+                            })()}
+                            triggeredCount={triggeredByPosition.get(pos.id) ?? 0}
+                            onAlertsChanged={reloadAlerts}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </SortableContext>
             </DndContext>
-            {enriched.length === 0 && (
+            {activeEnriched.length === 0 && soldEnriched.length === 0 && (
               <div className="text-center text-gray-500 py-8">Aucune position.</div>
             )}
           </CardContent>
