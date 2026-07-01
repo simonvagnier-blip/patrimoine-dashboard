@@ -20,6 +20,7 @@ import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
 import StatsBar from "./StatsBar";
 import NetWorthChart from "./NetWorthChart";
+import MonthlyHeatmap from "./MonthlyHeatmap";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -128,6 +129,7 @@ interface OperationRow {
   date: string; // YYYY-MM-DD
   type: string; // 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'dividend' | 'interest' | 'fee' | 'transfer'
   amount: number; // signé selon convention schema (cf src/lib/schema.ts)
+  currency: string; // 'EUR' | 'USD' | 'MGA' — conversion des flux (heatmap TWR)
 }
 
 /**
@@ -449,13 +451,10 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
   // F1: Fetch history
   useEffect(() => {
     fetch("/api/snapshots?days=400").then((r) => r.ok ? r.json() : []).then(setHistory).catch(() => {});
-    // Opérations (achats, dépôts, retraits…) sur les 31 derniers jours,
-    // nécessaires pour calculer la perf marché pure 1J/7J/30J par enveloppe
-    // (soustrait les contributions des deltas de valeur).
-    const fromDate = new Date(Date.now() - 31 * 86400000)
-      .toISOString()
-      .slice(0, 10);
-    fetch(`/api/operations?from=${fromDate}`)
+    // TOUTES les opérations (journal léger, ~100 lignes) : nécessaires pour
+    // la perf marché pure 1J/7J/30J (contributions dans la fenêtre) ET pour
+    // la heatmap mensuelle TWR (flux de chaque mois d'historique).
+    fetch(`/api/operations`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => setOperations(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -843,6 +842,23 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             globalDeltas={globalDeltas}
             hideAmounts={hideAmounts}
             basePath={basePath}
+          />
+        )}
+
+        {/* Heatmap mensuelle TWR (C4) — n'apparaît qu'avec assez d'historique.
+            Livrets ET business exclus : leurs mouvements de valeur ne passent
+            pas par le journal (édition manuelle) → toute édition serait lue
+            comme de la performance (vérifié : +80 k€ livrets le 01/07 et
+            +18 k€ Madagascar en juin faussaient tout). */}
+        {hasQuotes && history.length >= 10 && operations.length > 0 && (
+          <MonthlyHeatmap
+            history={history}
+            operations={operations}
+            eurUsd={quotes?.eurUsd}
+            mgaEurRate={quotes?.mgaEurRate}
+            excludeEnvelopeIds={envelopes
+              .filter((e) => e.type === "livrets" || e.type === "business")
+              .map((e) => e.id)}
           />
         )}
 
