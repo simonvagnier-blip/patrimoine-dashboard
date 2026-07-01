@@ -28,6 +28,7 @@ import Link from "next/link";
 import type { QuotesResult } from "@/lib/quotes";
 import { manualValueToEur } from "@/lib/currency";
 import BusinessProjectionCard from "@/components/BusinessProjectionCard";
+import BenchmarkPanel from "@/components/BenchmarkPanel";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -714,6 +715,12 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
 
         {/* Envelope-level historical chart */}
         <EnvelopeChartPanel envelopeId={envelope.id} color={envelope.color} />
+
+        {/* C4 — « Est-ce que je bats le marché ? » : TWR vs indice EUR.
+            Sans objet pour les livrets (épargne) et le business Madagascar. */}
+        {envelope.type !== "livrets" && envelope.type !== "business" && (
+          <BenchmarkPanel envelopeId={envelope.id} color={envelope.color} />
+        )}
 
         {/* Positions Table */}
         <Card className="bg-[#0d1117] border-gray-800">
