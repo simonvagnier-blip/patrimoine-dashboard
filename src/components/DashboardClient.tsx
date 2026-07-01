@@ -16,6 +16,7 @@ import type { ReturnsResult } from "@/lib/returns";
 import { manualValueToEur } from "@/lib/currency";
 import { TriBadge } from "./TriBadge";
 import Sparkline from "./Sparkline";
+import NotificationsButton from "./NotificationsButton";
 import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
 import StatsBar from "./StatsBar";
@@ -779,6 +780,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
               >
                 {loading ? "Chargement..." : "Actualiser"}
               </Button>
+              <NotificationsButton />
               <div className="flex flex-wrap gap-0.5">
                 <Link href={`${basePath}/projections`}>
                   <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-[#161b22]">Projections</Button>
