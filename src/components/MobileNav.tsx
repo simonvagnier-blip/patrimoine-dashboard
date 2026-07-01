@@ -31,7 +31,12 @@ export default function MobileNav({ space, onSpaceChange }: MobileNavProps) {
       {/* Top bar with F15 accent */}
       <div className="fixed top-0 left-0 right-0 h-12 bg-[#0d1117] border-b border-gray-800 flex items-center justify-between px-4 z-50">
         <div className="absolute top-0 left-0 right-0 h-[2px] transition-colors duration-300" style={{ backgroundColor: config.color }} />
-        <button onClick={() => setOpen(!open)} className="text-white p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center">
+        <button
+          onClick={() => setOpen(!open)}
+          aria-label={open ? "Fermer le menu" : "Ouvrir le menu"}
+          aria-expanded={open}
+          className="text-white p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
           {open ? <X size={20} /> : <Menu size={20} />}
         </button>
         <span className="text-white font-bold text-sm">Command Center</span>
@@ -42,7 +47,7 @@ export default function MobileNav({ space, onSpaceChange }: MobileNavProps) {
               key={s}
               onClick={() => { onSpaceChange(s); setOpen(false); }}
               className={`px-2 py-1 text-[10px] font-medium rounded transition-all min-w-[36px] ${
-                space === s ? "text-white" : "text-gray-500"
+                space === s ? "text-white" : "text-gray-400"
               }`}
               style={space === s ? { backgroundColor: SPACES[s].color + "15", color: SPACES[s].color } : {}}
             >

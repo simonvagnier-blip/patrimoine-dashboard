@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
+import MobileTabBar from "./MobileTabBar";
 import { type Space, SPACES } from "@/lib/spaces";
 
 function detectSpace(pathname: string): Space {
@@ -39,8 +40,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <Sidebar space={space} onSpaceChange={handleSpaceChange} />
       <MobileNav space={space} onSpaceChange={handleSpaceChange} />
+      <MobileTabBar space={space} />
       <div
-        className="md:ml-56 mt-12 md:mt-0 min-h-screen transition-colors duration-300"
+        className="md:ml-56 mt-12 md:mt-0 pb-16 md:pb-0 min-h-screen transition-colors duration-300"
         style={{ backgroundColor: config.bg }}
       >
         <AnimatePresence mode="wait">
