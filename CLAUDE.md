@@ -215,3 +215,29 @@ node scripts/import-fortuneo-csv.mjs --wipe      # Wipe + reimport
 
 ## SPECS.md
 Les specs détaillées du patrimoine sont dans `SPECS.md` à la racine du repo parent (`~/Claudius 1er/PROJECTS/finance dashboard/SPECS.md`).
+
+## Fonctionnalités nuit du 01→02/07/2026 (C3-C6)
+
+### TWR & benchmark (C4)
+- `lib/twr.ts` : TWR chaîné journalier (GIPS, début-de-journée), flux = buy/deposit − sell/withdrawal. `lib/benchmark-data.ts` : ETF UCITS EUR capitalisants (IWDA.AS, SXR8.DE, SXRV.DE, EMIM.AS, BTC-EUR), cache 1 h.
+- `GET /api/envelope-benchmark?envelope_id&days&index` — refuse livrets/business (flux non journalisés → TWR mensonger).
+- `BenchmarkPanel` (page enveloppe) + `MonthlyHeatmap` (dashboard, **exclut livrets+business** : leurs éditions manual_value seraient lues comme perf — vérifié +80 k€ livrets 01/07).
+
+### Import IBKR (C5)
+- `lib/ibkr-flex-parse.ts` (pur) + `lib/ibkr-flex.ts` (sync DB). Idempotence : `operations.external_id` (UNIQUE). PRU frais inclus recalculé, quantité maj, positions créées auto (scenario_key `tech` par défaut).
+- Env : `IBKR_FLEX_TOKEN` + `IBKR_FLEX_QUERY_ID` (token 1 an, renouvellement manuel — erreur 1012 = expiré). Cron nocturne en piggyback sur snapshot-envelopes (hobby = 2 crons max). Sync manuel : `POST /api/ibkr/sync` ; état : `GET /api/ibkr/status` ; UI `IbkrPanel` (page CTO).
+- Dépôts/retraits IBKR volontairement NON journalisés (convention TRI). Position soldée → warning (renommage -SOLD manuel).
+- user_params : `ibkrSyncLog`, `ibkrReconciliation`, `ibkrDividendAccruals`.
+
+### PWA + push (C3)
+- `app/manifest.ts` (standalone obligatoire pour push iOS), icônes générées par `scripts/generate-icons.mjs` (PNG pur Node), `public/sw.js` (données stale-while-revalidate, navigations network-first, push).
+- **SW enregistré en PRODUCTION uniquement** (`PwaSetup`) : en dev les chunks Turbopack tournent → HTML caché + chunks morts = hydratation tuée.
+- Web Push : env `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`, table `push_subscriptions`, routes `/api/push/subscribe` (GET clé/POST/DELETE) + `/api/push/test`. Digest quotidien dans le cron : variation en % SANS montants (transit APNs).
+- Assets PWA en liste blanche dans proxy.ts.
+
+### Thèses (C6)
+- `positions.tags` (TEXT JSON array). UI : champ dans PositionDialog (virgules), `ThesesPanel` sur la page enveloppe. Seed : photonique/consumption layer/énergie sur le CTO.
+- TODO : exposer tags dans loadPortfolioState/MCP get_positions (additif).
+
+### Backup DB
+`node scripts/backup-db.mjs` → dump SQL complet dans `../backups/` (hors repo, testé restaurable).
