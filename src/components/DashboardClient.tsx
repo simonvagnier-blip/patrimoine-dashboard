@@ -15,6 +15,7 @@ import type { QuotesResult } from "@/lib/quotes";
 import type { ReturnsResult } from "@/lib/returns";
 import { manualValueToEur } from "@/lib/currency";
 import { TriBadge } from "./TriBadge";
+import Sparkline from "./Sparkline";
 import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
 import StatsBar from "./StatsBar";
@@ -212,7 +213,7 @@ const ENVELOPE_COLORS = [
 ];
 
 function SortableEnvelopeCard({
-  env, basePath, loading, hasQuotes, grandTotal, deltas, realizedPnl = 0, hideAmounts = false,
+  env, basePath, loading, hasQuotes, grandTotal, deltas, realizedPnl = 0, hideAmounts = false, spark, capPct = null,
 }: {
   env: { id: string; name: string; color: string; total: number; positionCount: number; pnl: number; pnlPct: number; hasPnl: boolean };
   basePath: string;
@@ -222,6 +223,10 @@ function SortableEnvelopeCard({
   deltas?: EnvelopeDeltas;
   realizedPnl?: number;
   hideAmounts?: boolean;
+  /** Série de valeurs récentes (7 j) pour la sparkline de la carte. */
+  spark?: number[];
+  /** PEA : % du plafond de versements déjà utilisé (null sinon). */
+  capPct?: number | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: env.id });
   const style = {
@@ -239,7 +244,8 @@ function SortableEnvelopeCard({
       <button
         {...attributes}
         {...listeners}
-        className="absolute top-2 right-2 z-10 touch-none cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 opacity-30 hover:opacity-100 transition-opacity p-1 rounded"
+        aria-label={`Réordonner l'enveloppe ${env.name}`}
+        className="absolute top-1 right-1 z-10 touch-none cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 opacity-30 hover:opacity-100 transition-opacity min-w-[32px] min-h-[32px] flex items-center justify-center rounded"
         title="Glisser pour réordonner"
       >
         <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -258,58 +264,86 @@ function SortableEnvelopeCard({
           </CardHeader>
           <CardContent>
             {loading && !hasQuotes ? (
-              <div className="h-7 w-24 bg-gray-800 rounded animate-pulse" />
-            ) : (
+              /* Skeleton aux dimensions du contenu final (anti-CLS) : montant,
+                 zone stats (latente/deltas/réalisée) et footer conservent leur
+                 place — les données remplacent les blocs sans pousser la page. */
               <>
-                <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)] tabular-nums" style={{ color: env.color }}>
-                  {hideAmounts ? "•••• €" : formatEur(env.total)}
-                </p>
-                {hasQuotes && env.hasPnl && (
-                  <p className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums mt-0.5 ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
-                    <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Latente</span>
-                    {hideAmounts ? "••••" : `${env.pnl >= 0 ? "+" : ""}${formatEur(env.pnl)}`}
-                    <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
-                  </p>
-                )}
-                {/* Perf 1J/7J/30J calculée depuis les snapshots quotidiens.
-                    Période avec — si pas assez d'historique pour cette enveloppe. */}
-                {hasQuotes && deltas && (deltas.d1 || deltas.d7 || deltas.d30) && (
-                  <div className="flex items-center gap-2 mt-1 font-[family-name:var(--font-jetbrains)] text-[10px]">
-                    {(["d1", "d7", "d30"] as const).map((k) => {
-                      const lbl = k === "d1" ? "1J" : k === "d7" ? "7J" : "30J";
-                      const v = deltas[k];
-                      if (!v) {
-                        return (
-                          <span key={k} className="text-gray-500">
-                            <span className="text-gray-400">{lbl}</span> —
-                          </span>
-                        );
-                      }
-                      const color = v.pct >= 0 ? "text-emerald-400" : "text-red-400";
-                      return (
-                        <span key={k} className={color}>
-                          <span className="text-gray-500">{lbl}</span>{" "}
-                          {v.pct >= 0 ? "+" : ""}
-                          {v.pct.toFixed(1)}%
-                        </span>
-                      );
-                    })}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="h-7 w-28 bg-gray-800 rounded animate-pulse" />
+                    <div className="min-h-[52px] mt-1 space-y-1.5">
+                      <div className="h-3.5 w-32 bg-gray-800/80 rounded animate-pulse" />
+                      <div className="h-3 w-36 bg-gray-800/60 rounded animate-pulse" />
+                    </div>
                   </div>
-                )}
-                {hasQuotes && realizedPnl !== 0 && (
-                  <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis">
-                    <span className="text-[9px] uppercase tracking-wider text-gray-500 mr-1">Réalisée</span>
-                    {hideAmounts ? "••••" : `${realizedPnl >= 0 ? "+" : ""}${formatEur(realizedPnl)}`}
-                  </p>
-                )}
+                  <div className="h-[26px] w-16 bg-gray-800/60 rounded animate-pulse mt-1 shrink-0" />
+                </div>
               </>
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xl font-bold font-[family-name:var(--font-jetbrains)] tabular-nums" style={{ color: env.color }}>
+                    {hideAmounts ? "•••• €" : formatEur(env.total)}
+                  </p>
+                  {/* Zone stats à hauteur réservée : les lignes qui arrivent
+                      après coup (returns, historique) ne font plus grandir la
+                      carte. */}
+                  <div className="min-h-[52px] mt-0.5">
+                    {hasQuotes && env.hasPnl && (
+                      <p className={`text-xs font-[family-name:var(--font-jetbrains)] tabular-nums ${env.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`} title="Plus-value latente (non réalisée)">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 mr-1">Latente</span>
+                        {hideAmounts ? "••••" : `${env.pnl >= 0 ? "+" : ""}${formatEur(env.pnl)}`}
+                        <span className="text-[10px] ml-1">({env.pnl >= 0 ? "+" : ""}{env.pnlPct.toFixed(1)}%)</span>
+                      </p>
+                    )}
+                    {/* Perf 1J/7J/30J calculée depuis les snapshots quotidiens.
+                        Période avec — si pas assez d'historique pour cette enveloppe. */}
+                    {hasQuotes && deltas && (deltas.d1 || deltas.d7 || deltas.d30) && (
+                      <div className="flex items-center gap-2 mt-1 font-[family-name:var(--font-jetbrains)] text-[10px]">
+                        {(["d1", "d7", "d30"] as const).map((k) => {
+                          const lbl = k === "d1" ? "1J" : k === "d7" ? "7J" : "30J";
+                          const v = deltas[k];
+                          if (!v) {
+                            return (
+                              <span key={k} className="text-gray-500">
+                                <span className="text-gray-400">{lbl}</span> —
+                              </span>
+                            );
+                          }
+                          const color = v.pct >= 0 ? "text-emerald-400" : "text-red-400";
+                          return (
+                            <span key={k} className={color}>
+                              <span className="text-gray-400">{lbl}</span>{" "}
+                              {v.pct >= 0 ? "+" : ""}
+                              {v.pct.toFixed(1)}%
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {hasQuotes && realizedPnl !== 0 && (
+                      <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 mr-1">Réalisée</span>
+                        {hideAmounts ? "••••" : `${realizedPnl >= 0 ? "+" : ""}${formatEur(realizedPnl)}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {/* Sparkline 7 j (valeur d'enveloppe, snapshots quotidiens) */}
+                {spark && spark.length >= 2 && !hideAmounts && (
+                  <Sparkline data={spark} stroke={env.color} className="mt-1.5 shrink-0 opacity-80" />
+                )}
+              </div>
             )}
             <div className="flex items-center justify-between mt-2">
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-400">
                 {env.positionCount} ligne{env.positionCount > 1 ? "s" : ""}
+                {capPct !== null && (
+                  <span className="text-gray-500"> · {capPct.toFixed(0)} % du plafond</span>
+                )}
               </span>
               {grandTotal > 0 && (
-                <span className="text-xs text-gray-500 font-[family-name:var(--font-jetbrains)]">
+                <span className="text-xs text-gray-400 font-[family-name:var(--font-jetbrains)]">
                   {((env.total / grandTotal) * 100).toFixed(1)}%
                 </span>
               )}
@@ -524,6 +558,25 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
 
+  // Séries ~7 j par enveloppe pour les sparklines des cartes, depuis les
+  // details_json des snapshots quotidiens (déjà chargés — zéro fetch en plus).
+  const recentDetails = sortedHistoryAsc.slice(-8).map((s) => {
+    try {
+      return s.details_json ? (JSON.parse(s.details_json) as Record<string, number>) : null;
+    } catch {
+      return null;
+    }
+  });
+  const envelopeSparks: Record<string, number[]> = {};
+  for (const env of envelopes) {
+    const serie: number[] = [];
+    for (const d of recentDetails) {
+      const v = d?.[env.id];
+      if (typeof v === "number" && v > 0) serie.push(v);
+    }
+    if (serie.length >= 2) envelopeSparks[env.id] = serie;
+  }
+
   const envelopeData = envelopes.map((env) => {
     const envPositions = enrichedPositions.filter((p) => p.envelope_id === env.id);
     const total = envPositions.reduce((sum, p) => sum + p.current_value, 0);
@@ -624,9 +677,17 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         <div className="flex flex-col sm:flex-row items-start justify-between gap-6">
           {/* Zone données */}
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Patrimoine · Vue consolidée</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-gray-400">Patrimoine · Vue consolidée</p>
             {loading && !hasQuotes ? (
-              <div className="h-10 w-52 bg-gray-800 rounded animate-pulse mt-2" />
+              /* Skeleton héros complet (total + pilule jour + latente + ligne
+                 secondaire) — la hauteur ne bouge plus quand les données
+                 arrivent. */
+              <div className="mt-2 space-y-2">
+                <div className="h-10 w-52 bg-gray-800 rounded animate-pulse" />
+                <div className="h-7 w-44 bg-gray-800/80 rounded-full animate-pulse" />
+                <div className="h-6 w-40 bg-gray-800/70 rounded animate-pulse" />
+                <div className="h-4 w-64 bg-gray-800/50 rounded animate-pulse" />
+              </div>
             ) : (
               <div className="flex items-center gap-2 mt-2">
                 <p className="text-3xl sm:text-4xl font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums leading-none">
@@ -648,6 +709,34 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             )}
             {hasQuotes && (
               <>
+                {/* Variation du JOUR en pilule — le 2e des « 3 chiffres en 2 s ».
+                    Toujours rendue (placeholder —) pour ne pas décaler la page
+                    quand l'historique arrive. */}
+                <div className="mt-2">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[13px] font-semibold font-[family-name:var(--font-jetbrains)] tabular-nums ${
+                      globalDeltas.d1
+                        ? globalDeltas.d1.perfEur >= 0
+                          ? "bg-emerald-500/10 text-emerald-400"
+                          : "bg-red-500/10 text-red-400"
+                        : "bg-gray-800/60 text-gray-500"
+                    }`}
+                    title="Performance marché du jour (contributions exclues)"
+                  >
+                    {globalDeltas.d1 ? (
+                      <>
+                        {globalDeltas.d1.perfEur >= 0 ? "▲" : "▼"}{" "}
+                        {hideAmounts ? "••••" : `${globalDeltas.d1.perfEur >= 0 ? "+" : ""}${formatEur(globalDeltas.d1.perfEur)}`}
+                        {" auj. "}
+                        <span className="opacity-80">
+                          ({globalDeltas.d1.pct >= 0 ? "+" : ""}{globalDeltas.d1.pct.toFixed(2)} %)
+                        </span>
+                      </>
+                    ) : (
+                      "auj. —"
+                    )}
+                  </span>
+                </div>
                 {/* Plus-value LATENTE (non réalisée) — signe par chevron + couleur */}
                 <p
                   className={`text-base font-[family-name:var(--font-jetbrains)] tabular-nums mt-2 ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
@@ -737,11 +826,18 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           </div>
         )}
 
-        {/* Pièce maîtresse : grande courbe d'évolution du patrimoine */}
-        {hasQuotes && history.length > 1 && <NetWorthChart history={history} hideAmounts={hideAmounts} />}
+        {/* Pièce maîtresse : grande courbe d'évolution du patrimoine.
+            Skeleton à hauteur fixe pendant le chargement initial (anti-CLS). */}
+        {!hasQuotes ? (
+          <div className="h-[320px] bg-[#11161f] border border-gray-800 rounded-xl animate-pulse" aria-hidden="true" />
+        ) : (
+          history.length > 1 && <NetWorthChart history={history} hideAmounts={hideAmounts} />
+        )}
 
-        {/* Barre de KPIs (dividendes / épargne / deltas) — sparkline retirée */}
-        {hasQuotes && (
+        {/* Barre de KPIs (dividendes / épargne / deltas) */}
+        {!hasQuotes ? (
+          <div className="h-11 bg-[#11161f] border border-gray-800 rounded-lg animate-pulse" aria-hidden="true" />
+        ) : (
           <StatsBar
             grandTotal={grandTotal}
             globalDeltas={globalDeltas}
@@ -770,17 +866,21 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
         {/* Enveloppes — titre de section + action */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Mes enveloppes</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-gray-400">Mes enveloppes</p>
             <button
               onClick={() => setCreateEnvOpen(true)}
-              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors px-3 py-3 -mx-3 -my-3"
             >
               + Ajouter
             </button>
           </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEnvelopeDragEnd}>
+          {/* id stable → évite le mismatch d'hydratation SSR de dnd-kit
+              (aria-describedby auto-incrémenté différemment serveur/client). */}
+          <DndContext id="envelopes-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEnvelopeDragEnd}>
             <SortableContext items={envelopeData.map((e) => e.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {/* Mobile : 1 colonne pleine largeur (cartes riches, sparkline).
+                  Desktop : grille dense 3-4 colonnes. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {envelopeData.map((env) => (
                   <SortableEnvelopeCard
                     key={env.id}
@@ -792,6 +892,12 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                     deltas={env.deltas}
                     realizedPnl={returns?.envelopes.find((r) => r.envelope_id === env.id)?.realized_pnl_eur ?? 0}
                     hideAmounts={hideAmounts}
+                    spark={envelopeSparks[env.id]}
+                    capPct={
+                      env.type === "pea" && env.deposits && env.target
+                        ? Math.min(100, (env.deposits / env.target) * 100)
+                        : null
+                    }
                   />
                 ))}
               </div>
@@ -799,24 +905,30 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           </DndContext>
         </div>
 
-        {/* Allocation Donut — masqué sur install vierge (rien à répartir) */}
-        {!noPositions && (
-        <Card className="bg-[#11161f] border-gray-800">
+        {/* Répartition + détail des positions.
+            Mobile : empilés (ordre inchangé). Desktop : côte à côte — donut 1/3,
+            tableau 2/3 — pour exploiter la largeur (usage desktop 50 %). */}
+        {!noPositions && !hasQuotes && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" aria-hidden="true">
+            <div className="h-[360px] lg:col-span-1 bg-[#11161f] border border-gray-800 rounded-xl animate-pulse" />
+            <div className="h-[360px] lg:col-span-2 bg-[#11161f] border border-gray-800 rounded-xl animate-pulse" />
+          </div>
+        )}
+        {!noPositions && hasQuotes && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <Card className="bg-[#11161f] border-gray-800 lg:col-span-1">
           <CardHeader>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Répartition</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Répartition</p>
             <CardTitle className="text-sm text-gray-200 font-medium">Par classe d&apos;actifs</CardTitle>
           </CardHeader>
           <CardContent>
             <AllocationDonut data={allocationData} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
-        )}
 
-        {/* R9: Positions Table with filters */}
-        {!noPositions && (
-        <Card className="bg-[#11161f] border-gray-800">
+        <Card className="bg-[#11161f] border-gray-800 lg:col-span-2">
           <CardHeader>
-            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500">Détail</p>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Détail</p>
             <CardTitle className="text-sm text-gray-200 font-medium">
               Toutes les positions
               <span className="text-xs font-normal text-gray-500 ml-2">
@@ -853,6 +965,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             <PositionTable positions={filteredPositions} grandTotal={grandTotal} hideAmounts={hideAmounts} />
           </CardContent>
         </Card>
+        </div>
         )}
       </div>
 
@@ -892,7 +1005,9 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   <button
                     key={color}
                     onClick={() => setNewEnvColor(color)}
-                    className={`w-7 h-7 rounded-full transition-all ${newEnvColor === color ? "ring-2 ring-white ring-offset-2 ring-offset-[#0d1117] scale-110" : "hover:scale-110"}`}
+                    aria-label={`Couleur ${color}`}
+                    aria-pressed={newEnvColor === color}
+                    className={`w-9 h-9 rounded-full transition-all ${newEnvColor === color ? "ring-2 ring-white ring-offset-2 ring-offset-[#0d1117] scale-110" : "hover:scale-110"}`}
                     style={{ backgroundColor: color }}
                   />
                 ))}

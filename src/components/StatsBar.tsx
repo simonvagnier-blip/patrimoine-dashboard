@@ -89,7 +89,7 @@ export default function StatsBar({
   if (hasDividends) {
     pills.push(
       <div key="div" className="flex items-baseline gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-gray-500">
+        <span className="text-[10px] uppercase tracking-wider text-gray-400">
           💰 Div/an
         </span>
         <span className="text-sm font-semibold text-emerald-400 font-[family-name:var(--font-jetbrains)] tabular-nums">
@@ -112,7 +112,7 @@ export default function StatsBar({
         className="flex items-baseline gap-2 hover:opacity-80 transition-opacity"
         title="Voir le budget"
       >
-        <span className="text-[10px] uppercase tracking-wider text-gray-500">
+        <span className="text-[10px] uppercase tracking-wider text-gray-400">
           Épargne/mois
         </span>
         <span
@@ -134,7 +134,7 @@ export default function StatsBar({
       <div key="delta" className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap">
         {deltas.map(({ label, data }) => (
           <div key={label} className="flex items-baseline gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-gray-500">
+            <span className="text-[10px] uppercase tracking-wider text-gray-400">
               {label}
             </span>
             {data ? (
