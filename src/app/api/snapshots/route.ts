@@ -33,29 +33,74 @@ export async function POST(request: NextRequest) {
   // cron nocturne (computeAllEnvelopeValues). Ainsi POST et cron écrivent des
   // EUR IDENTIQUES pour (envelope_id, date) → fini la divergence "last-write-
   // wins" entre la card du dashboard (quotes client) et le graph (quotes cron).
-  // Sert pour details_json ET pour envelope_snapshots (même source).
+  // Sert pour details_json, envelope_snapshots ET le total global (le client
+  // n'est plus cru sur parole : son total ne sert que de fallback).
   let serverDetails: Record<string, number> = {};
+  let serverComputeOk = false;
   try {
-    const envValues = await computeAllEnvelopeValues();
-    serverDetails = Object.fromEntries(envValues.map((v) => [v.envelopeId, v.valueEur]));
+    const { values, degraded, missingTickers } = await computeAllEnvelopeValues();
+    // Valorisation sous-estimée (position cotée sans AUCUN prix, ni live ni
+    // dernier cours connu) : on refuse d'écrire un point d'historique faux.
+    // Le point de la veille reste le dernier ; un passage sain rattrapera.
+    if (degraded) {
+      return NextResponse.json({
+        success: false,
+        skipped: true,
+        reason: `valorisation dégradée — tickers sans prix : ${missingTickers.join(", ")}`,
+      });
+    }
+    serverDetails = Object.fromEntries(values.map((v) => [v.envelopeId, v.valueEur]));
+    serverComputeOk = true;
   } catch {
     // Fallback : si le calcul serveur échoue, on retombe sur les details client.
     serverDetails = body.details && typeof body.details === "object" ? body.details : {};
   }
 
-  // Global snapshot. total_value / invested_total = valeurs live affichées par
-  // le dashboard ; details_json = valeurs serveur (cohérentes avec le graph).
+  const clientTotal = Number.isFinite(body.total_value) ? (body.total_value as number) : null;
+  const serverTotal = serverComputeOk
+    ? Math.round(Object.values(serverDetails).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0) * 100) / 100
+    : null;
+  const totalValue = serverTotal ?? clientTotal;
+  if (totalValue === null) {
+    return NextResponse.json(
+      { success: false, error: "total_value invalide et calcul serveur indisponible" },
+      { status: 400 }
+    );
+  }
+
   const existing = await db
     .select()
     .from(schema.snapshots)
     .where(eq(schema.snapshots.date, today))
     .get();
 
+  // Ceinture + bretelles : un patrimoine qui perd >50 % en un jour n'est pas
+  // un mouvement de marché, c'est un bug de valorisation. On garde le dernier
+  // point sain plutôt que d'écraser l'historique (le log garde la trace).
+  const previous = await db
+    .select()
+    .from(schema.snapshots)
+    .orderBy(desc(schema.snapshots.date))
+    .limit(2)
+    .all();
+  const reference = previous.find((r) => r.date !== today);
+  if (reference && reference.total_value > 0 && totalValue < 0.5 * reference.total_value) {
+    console.warn(
+      `snapshot POST: chute implausible ${reference.total_value} → ${totalValue} €, écriture refusée`
+    );
+    return NextResponse.json({
+      success: false,
+      skipped: true,
+      reason: `chute implausible vs ${reference.date} (${reference.total_value} € → ${totalValue} €)`,
+    });
+  }
+
+  const investedTotal = Number.isFinite(body.invested_total) ? (body.invested_total as number) : null;
   if (existing) {
     await db.update(schema.snapshots)
       .set({
-        total_value: body.total_value,
-        invested_total: body.invested_total ?? null,
+        total_value: totalValue,
+        invested_total: investedTotal,
         details_json: JSON.stringify(serverDetails),
       })
       .where(eq(schema.snapshots.id, existing.id))
@@ -64,8 +109,8 @@ export async function POST(request: NextRequest) {
     await db.insert(schema.snapshots)
       .values({
         date: today,
-        total_value: body.total_value,
-        invested_total: body.invested_total ?? null,
+        total_value: totalValue,
+        invested_total: investedTotal,
         details_json: JSON.stringify(serverDetails),
         created_at: nowIso,
       })
