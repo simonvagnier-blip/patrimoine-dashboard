@@ -22,18 +22,47 @@ export interface EnvelopeValuation {
   valueEur: number;
 }
 
+export interface EnvelopeValuationsResult {
+  values: EnvelopeValuation[];
+  /**
+   * true si au moins une position cotée n'a AUCUN prix disponible (ni live,
+   * ni dernier cours connu) : les totaux sont alors sous-estimés et ne
+   * doivent PAS être persistés dans l'historique.
+   */
+  degraded: boolean;
+  missingTickers: string[];
+}
+
 /**
  * Compute current valuations for every envelope in the database, in EUR.
  * Reuses the cached quotes result so repeated calls within 15 minutes are
- * free.
+ * free. Grâce au fallback "dernier cours connu" de fetchAllQuotes, une panne
+ * Yahoo ne fait plus retomber les positions à 0 € — `degraded` ne devient
+ * true que si un ticker n'a jamais eu de cours stocké.
  */
-export async function computeAllEnvelopeValues(): Promise<EnvelopeValuation[]> {
+export async function computeAllEnvelopeValues(): Promise<EnvelopeValuationsResult> {
   const positions = await db.select().from(schema.positions).all();
   const tickers = positions
     .map((p) => p.yahoo_ticker)
     .filter((t): t is string => !!t);
 
-  const { quotes, eurUsd, mgaEurRate } = await fetchAllQuotes(tickers);
+  const { quotes, eurUsd, mgaEurRate, missingTickers } =
+    await fetchAllQuotes(tickers);
+
+  // La dégradation ne compte que pour les positions DÉTENUES : une position
+  // soldée (quantity=0) garde son yahoo_ticker (ex: V-SOLD → V) mais vaut
+  // 0 € quoi qu'il arrive — un échec Yahoo sur elle ne fausse aucun total.
+  const missingRelevant = new Set(
+    positions
+      .filter(
+        (p) =>
+          p.yahoo_ticker &&
+          typeof p.quantity === "number" &&
+          p.quantity > 0 &&
+          missingTickers.includes(p.yahoo_ticker)
+      )
+      .map((p) => p.yahoo_ticker as string)
+  );
 
   const totals = new Map<string, number>();
   for (const p of positions) {
@@ -60,10 +89,14 @@ export async function computeAllEnvelopeValues(): Promise<EnvelopeValuation[]> {
     if (!totals.has(e.id)) totals.set(e.id, 0);
   }
 
-  return Array.from(totals.entries()).map(([envelopeId, valueEur]) => ({
-    envelopeId,
-    valueEur: Math.round(valueEur * 100) / 100,
-  }));
+  return {
+    values: Array.from(totals.entries()).map(([envelopeId, valueEur]) => ({
+      envelopeId,
+      valueEur: Math.round(valueEur * 100) / 100,
+    })),
+    degraded: missingRelevant.size > 0,
+    missingTickers: [...missingRelevant],
+  };
 }
 
 /**
@@ -88,9 +121,20 @@ export async function snapshotAllEnvelopes(): Promise<{
   date: string;
   count: number;
   values: EnvelopeValuation[];
+  skipped?: boolean;
+  reason?: string;
 }> {
-  const values = await computeAllEnvelopeValues();
+  const { values, degraded, missingTickers } = await computeAllEnvelopeValues();
   const date = todayYmd();
+  if (degraded) {
+    // Valorisation sous-estimée (ticker sans aucun prix) : on n'écrit RIEN
+    // plutôt que de polluer l'historique. Le point de la veille reste le
+    // dernier ; le prochain passage sain (cron ou chargement) rattrapera.
+    console.warn(
+      `snapshotAllEnvelopes: skip (tickers sans prix: ${missingTickers.join(", ")})`
+    );
+    return { date, count: 0, values, skipped: true, reason: `tickers sans prix: ${missingTickers.join(", ")}` };
+  }
   for (const v of values) {
     await upsertSnapshot(v.envelopeId, v.valueEur, date);
   }
@@ -105,10 +149,14 @@ export async function snapshotAllEnvelopes(): Promise<{
 export async function ensureTodaySnapshotForEnvelope(
   envelopeId: string
 ): Promise<number | null> {
-  const all = await computeAllEnvelopeValues();
-  const match = all.find((v) => v.envelopeId === envelopeId);
+  const { values, degraded } = await computeAllEnvelopeValues();
+  const match = values.find((v) => v.envelopeId === envelopeId);
   if (!match) return null;
-  await upsertSnapshot(envelopeId, match.valueEur);
+  // Valorisation dégradée → on renvoie la valeur pour l'affichage live mais
+  // on ne fige rien dans l'historique.
+  if (!degraded) {
+    await upsertSnapshot(envelopeId, match.valueEur);
+  }
   return match.valueEur;
 }
 
