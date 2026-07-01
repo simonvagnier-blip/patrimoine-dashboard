@@ -14,7 +14,14 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/mcp") ||
     pathname.startsWith("/api/oauth") ||
-    pathname.startsWith("/.well-known/")
+    pathname.startsWith("/.well-known/") ||
+    // Assets PWA (C3) : non sensibles, et le service worker doit pouvoir se
+    // mettre à jour même session expirée (sinon SW figé jusqu'au login).
+    pathname === "/sw.js" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/icon-192.png" ||
+    pathname === "/icon-512.png" ||
+    pathname === "/apple-touch-icon.png"
   ) {
     return NextResponse.next();
   }

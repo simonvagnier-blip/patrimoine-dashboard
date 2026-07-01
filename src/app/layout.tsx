@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import AppShell from "@/components/AppShell";
+import PwaSetup from "@/components/PwaSetup";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -16,6 +17,17 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Command Center",
   description: "Hub personnel & professionnel",
+  // PWA iOS : icône écran d'accueil (180×180, fond plein) + mode standalone.
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Patrimoine",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#080c14",
 };
 
 export default function RootLayout({
@@ -32,6 +44,7 @@ export default function RootLayout({
         <AppShell>
           {children}
         </AppShell>
+        <PwaSetup />
       </body>
     </html>
   );

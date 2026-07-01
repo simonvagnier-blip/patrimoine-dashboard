@@ -52,6 +52,16 @@ export const userParams = sqliteTable("user_params", {
   value: text("value").notNull(),
 });
 
+// C3 — abonnements Web Push (PWA installée sur iPhone/desktop).
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  endpoint: text("endpoint").primaryKey(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  created_at: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
+
 // F1: Portfolio snapshots for history tracking
 export const snapshots = sqliteTable("snapshots", {
   id: integer("id").primaryKey({ autoIncrement: true }),

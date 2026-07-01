@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { snapshotAllEnvelopes } from "@/lib/envelope-snapshots";
 import { runIbkrSync } from "@/lib/ibkr-flex";
+import { sendPushToAll } from "@/lib/push";
 import { db, schema } from "@/lib/db";
-import { eq, lt, or } from "drizzle-orm";
+import { desc, eq, lt, or } from "drizzle-orm";
 
 // Snapshots + purge + sync IBKR : le Flex Web Service peut prendre ~30 s.
 export const maxDuration = 120;
@@ -61,7 +62,30 @@ export async function GET(request: NextRequest) {
       ibkr = { error: (err as Error).message };
     }
 
-    return NextResponse.json({ ok: true, ...result, ibkr });
+    // Digest push quotidien : variation du jour en % UNIQUEMENT (pas de
+    // montants — le contenu transite par APNs, cohérent avec le mode discret).
+    let push: Awaited<ReturnType<typeof sendPushToAll>> | { skipped: string } = { skipped: "no data" };
+    try {
+      const snaps = await db
+        .select()
+        .from(schema.snapshots)
+        .orderBy(desc(schema.snapshots.date))
+        .limit(2)
+        .all();
+      if (snaps.length === 2 && snaps[1].total_value > 0) {
+        const pct = ((snaps[0].total_value - snaps[1].total_value) / snaps[1].total_value) * 100;
+        const arrow = pct >= 0 ? "▲" : "▼";
+        push = await sendPushToAll({
+          title: `Patrimoine ${arrow} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)} %`,
+          body: `Variation vs ${snaps[1].date}. Ouvre l'app pour le détail.`,
+          url: "/perso/patrimoine",
+        });
+      }
+    } catch (err) {
+      push = { skipped: (err as Error).message };
+    }
+
+    return NextResponse.json({ ok: true, ...result, ibkr, push });
   } catch (err) {
     console.error("snapshot-envelopes cron failed:", err);
     return NextResponse.json(
