@@ -143,6 +143,9 @@ export const operations = sqliteTable("operations", {
   amount: real("amount").notNull(), // signed (see conventions above)
   currency: text("currency").notNull().default("EUR"),
   note: text("note"),
+  // Idempotence des imports externes (C5) : identifiant source unique,
+  // ex. "ibkr:trade:123456789". NULL pour les opérations manuelles.
+  external_id: text("external_id"),
   // NB: on utilise $defaultFn plutôt que .default("CURRENT_TIMESTAMP") car
   // Drizzle insère sinon la string littérale. Côté DDL SQLite, la colonne
   // a bien DEFAULT CURRENT_TIMESTAMP pour robustesse si une insertion
