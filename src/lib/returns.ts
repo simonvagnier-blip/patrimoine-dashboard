@@ -147,12 +147,21 @@ export async function computeReturns(): Promise<ReturnsResult> {
     return round2(total);
   }
 
+  // Verrou convention n°1 : le TRI/xirr se calcule sur les flux d'investissement
+  // réels (buy/sell/fee) et les gains encaissés (dividend/interest) — JAMAIS sur
+  // les deposit/withdrawal/transfer d'alimentation d'enveloppe. Si un deposit ET
+  // les achats faits avec étaient tous deux journalisés, chaque euro serait
+  // compté deux fois et le TRI serait faussé. Aujourd'hui le journal ne contient
+  // aucun deposit (vérifié 07/2026) : ce filtre ne change aucun chiffre, il rend
+  // la convention inviolable pour le futur.
+  const XIRR_OP_TYPES = new Set(["buy", "sell", "fee", "dividend", "interest"]);
+
   function flowsFor(
     predicate: (op: (typeof allOps)[number]) => boolean,
     terminalValueEur: number
   ): CashFlow[] {
     const ops = allOps
-      .filter(predicate)
+      .filter((op) => XIRR_OP_TYPES.has(op.type) && predicate(op))
       .map((op) => ({
         date: ymdToDate(op.date),
         // Flip sign: DB stores envelope-centric, xirr wants investor-centric
@@ -201,8 +210,9 @@ export async function computeReturns(): Promise<ReturnsResult> {
     });
   }
 
-  // Per-envelope TRI. We aggregate all ops for the envelope, including
-  // deposits not tied to any specific position.
+  // Per-envelope TRI. We aggregate the envelope's ops — restricted to the
+  // XIRR_OP_TYPES above (deposits/withdrawals are envelope funding, not
+  // investment flows; they are excluded to prevent double-counting with buys).
   const envelopes: ReturnRow[] = [];
   for (const e of state.envelopes) {
     const flows = flowsFor(
@@ -264,6 +274,10 @@ export async function computeReturns(): Promise<ReturnsResult> {
   const globalFlows = flowsFor(() => true, state.total_value_eur);
   let globalTri = xirr(globalFlows);
   if (globalTri !== null && Math.abs(globalTri) > 1.0) globalTri = null;
+  // Le flag coverage global reflète l'état réel du journal : si des enveloppes
+  // sont incomplètes, le TRI global l'est aussi (avant : "full" hardcodé,
+  // trompeur pour les consommateurs MCP alors que le TRI était neutralisé).
+  const partialEnvelopes = envelopes.filter((e) => e.coverage !== "full");
   const global: ReturnRow = {
     scope: "global",
     current_value_eur: state.total_value_eur,
@@ -275,7 +289,13 @@ export async function computeReturns(): Promise<ReturnsResult> {
     invested_net_eur: round2(netInvested(globalFlows)),
     realized_pnl_eur: realizedPnlFor(() => true),
     tri_annual: globalTri,
-    coverage: "full",
+    coverage: partialEnvelopes.length === 0 ? "full" : "partial",
+    coverage_note:
+      partialEnvelopes.length > 0
+        ? `Journal incomplet sur ${partialEnvelopes.length}/${envelopes.length} enveloppes (${partialEnvelopes
+            .map((e) => e.envelope_name)
+            .join(", ")}) — TRI global non fiable`
+        : undefined,
   };
 
   return {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { snapshotAllEnvelopes } from "@/lib/envelope-snapshots";
+import { db, schema } from "@/lib/db";
+import { eq, lt, or } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,25 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await snapshotAllEnvelopes();
+
+    // Hygiène OAuth : purge des access tokens expirés et des codes
+    // d'autorisation consommés ou périmés (expires_at en unix ms). Sans ça,
+    // ils s'accumulent indéfiniment dans la base.
+    const nowMs = Date.now();
+    await db
+      .delete(schema.oauthTokens)
+      .where(lt(schema.oauthTokens.expires_at, nowMs))
+      .run();
+    await db
+      .delete(schema.oauthCodes)
+      .where(
+        or(
+          lt(schema.oauthCodes.expires_at, nowMs),
+          eq(schema.oauthCodes.used, 1),
+        ),
+      )
+      .run();
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("snapshot-envelopes cron failed:", err);
