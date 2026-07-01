@@ -50,17 +50,26 @@ export default function AllocationDonut({ data, hideAmounts = false }: Allocatio
   // R7: Interactive legend with highlight
   const [activeKey, setActiveKey] = useState<string | null>(null);
 
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const active = activeKey ? data.find((d) => d.key === activeKey) : null;
+  const fmtEur = (v: number) =>
+    hideAmounts ? "•••• €" : v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
+  // Layout VERTICAL : le composant vit dans une carte étroite (1/3 de colonne
+  // sur desktop depuis C2) — un layout côte-à-côte basé sur la largeur de
+  // l'ÉCRAN y superposait la légende. Donut centré + total au centre (ou
+  // détail de la classe survolée) + légende pleine largeur en 1 colonne.
   return (
-    <div className="flex flex-col md:flex-row items-center gap-6">
-      <div className="w-[280px] h-[280px]">
+    <div className="flex flex-col items-center gap-5">
+      <div className="relative w-[240px] h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={70}
-              outerRadius={120}
+              innerRadius={72}
+              outerRadius={108}
               paddingAngle={2}
               dataKey="value"
               stroke="none"
@@ -71,14 +80,38 @@ export default function AllocationDonut({ data, hideAmounts = false }: Allocatio
                   fill={SCENARIO_COLORS[entry.key] || "#6b7280"}
                   opacity={activeKey === null || activeKey === entry.key ? 1 : 0.25}
                   style={{ transition: "opacity 0.2s", cursor: "pointer" }}
+                  onMouseEnter={() => setActiveKey(entry.key)}
+                  onMouseLeave={() => setActiveKey(null)}
                 />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip hideAmounts={hideAmounts} />} />
           </PieChart>
         </ResponsiveContainer>
+        {/* Centre du donut : total, ou détail de la classe survolée */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-10">
+          {active ? (
+            <>
+              <span className="text-[11px] text-gray-400 truncate max-w-full">{active.name}</span>
+              <span className="text-lg font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums">
+                {active.pct.toFixed(1)}%
+              </span>
+              <span className="text-[11px] text-gray-400 font-[family-name:var(--font-jetbrains)] tabular-nums">
+                {fmtEur(active.value)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-[10px] uppercase tracking-wider text-gray-500">Total</span>
+              <span className="text-lg font-bold text-white font-[family-name:var(--font-jetbrains)] tabular-nums">
+                {fmtEur(total)}
+              </span>
+              <span className="text-[11px] text-gray-500">{data.length} classes</span>
+            </>
+          )}
+        </div>
       </div>
-      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+      <div className="w-full space-y-1">
         {data.map((d) => (
           <div
             key={d.key}
