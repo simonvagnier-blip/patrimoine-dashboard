@@ -30,6 +30,7 @@ import { manualValueToEur } from "@/lib/currency";
 import BusinessProjectionCard from "@/components/BusinessProjectionCard";
 import BenchmarkPanel from "@/components/BenchmarkPanel";
 import IbkrPanel from "@/components/IbkrPanel";
+import ThesesPanel from "@/components/ThesesPanel";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -48,6 +49,7 @@ interface Position {
   id: number; envelope_id: string; ticker: string; yahoo_ticker: string | null;
   label: string; isin: string | null; quantity: number | null; pru: number | null;
   manual_value: number | null; scenario_key: string; currency: string;
+  tags?: string | null; // C6 — thèses (JSON array sérialisé)
 }
 
 function formatEur(v: number, d = 0): string {
@@ -725,6 +727,16 @@ export default function EnvelopeDetailClient({ envelope, initialPositions, backP
 
         {/* C5 — Import automatique IBKR (setup / sync / réconciliation) */}
         {envelope.type === "cto" && <IbkrPanel />}
+
+        {/* C6 — Performance par thèse (dès qu'au moins une position est taguée) */}
+        {enriched.some((p) => p.tags) && (
+          <ThesesPanel
+            positions={enriched.map((p) => ({
+              id: p.id, ticker: p.ticker, quantity: p.quantity, tags: p.tags,
+              value: p.value, pnl: p.pnl,
+            }))}
+          />
+        )}
 
         {/* Positions Table */}
         <Card className="bg-[#0d1117] border-gray-800">

@@ -39,6 +39,8 @@ interface PositionFormData {
   manual_value: string;
   scenario_key: string;
   currency: string;
+  /** Thèses, séparées par des virgules dans l'UI (C6). */
+  tags: string;
 }
 
 interface PositionDialogProps {
@@ -56,6 +58,7 @@ interface PositionDialogProps {
     manual_value: number | null;
     scenario_key: string;
     currency: string;
+    tags?: string | null;
   } | null;
   onSaved: () => void;
 }
@@ -64,7 +67,7 @@ const emptyForm = (envelopeId: string): PositionFormData => ({
   envelope_id: envelopeId,
   ticker: "", yahoo_ticker: "", label: "", isin: "",
   quantity: "", pru: "", manual_value: "",
-  scenario_key: "wd", currency: "EUR",
+  scenario_key: "wd", currency: "EUR", tags: "",
 });
 
 function detectMode(pos: { manual_value: number | null; scenario_key: string } | null): PositionMode {
@@ -91,6 +94,7 @@ export default function PositionDialog({ open, onOpenChange, envelopeId, editPos
         quantity: editPosition.quantity?.toString() || "", pru: editPosition.pru?.toString() || "",
         manual_value: editPosition.manual_value?.toString() || "",
         scenario_key: editPosition.scenario_key, currency: editPosition.currency,
+        tags: (() => { try { return (JSON.parse(editPosition.tags || "[]") as string[]).join(", "); } catch { return ""; } })(),
       });
       setMode(detectMode(editPosition));
     } else {
@@ -131,6 +135,10 @@ export default function PositionDialog({ open, onOpenChange, envelopeId, editPos
       pru: mode === "quoted" && form.pru ? parseFloat(form.pru) : null,
       manual_value: mode === "manual" && form.manual_value ? parseFloat(form.manual_value) : null,
       scenario_key: form.scenario_key, currency: form.currency,
+      tags: (() => {
+        const arr = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
+        return arr.length ? arr : null;
+      })(),
     };
     try {
       const res = await fetch("/api/positions", {
@@ -193,6 +201,11 @@ export default function PositionDialog({ open, onOpenChange, envelopeId, editPos
           <div className="space-y-2">
             <Label className="text-gray-300">Libellé *</Label>
             <Input value={form.label} onChange={(e) => updateField("label", e.target.value)} placeholder={mode === "quoted" ? "Amundi PEA S&P 500" : "Fonds Euros Spirit"} className={inputCls} />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-gray-300">Thèses <span className="text-gray-500 text-xs">(séparées par des virgules — ex: photonique, IA)</span></Label>
+            <Input value={form.tags} onChange={(e) => updateField("tags", e.target.value)} placeholder="photonique" className={inputCls} />
           </div>
 
           {mode === "quoted" && (
