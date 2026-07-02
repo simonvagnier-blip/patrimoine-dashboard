@@ -200,14 +200,22 @@ export async function fetchFlexStatementXml(
   token: string,
   queryId: string
 ): Promise<string> {
-  const sendXml = await flexFetch(
-    `${FLEX_BASE}/SendRequest?t=${encodeURIComponent(token)}&q=${encodeURIComponent(queryId)}&v=3`
-  );
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "" });
-  const send = parser.parse(sendXml)?.FlexStatementResponse;
+
+  // On force la période à 7 jours à la REQUÊTE (`p=7`, jours calendaires) —
+  // indépendamt de la période configurée dans la query côté IBKR (l'UI ne
+  // propose pas toujours « 7 derniers jours calendaires »). Si IBKR refuse le
+  // paramètre, repli automatique sur la config de la query.
+  const baseUrl = `${FLEX_BASE}/SendRequest?t=${encodeURIComponent(token)}&q=${encodeURIComponent(queryId)}&v=3`;
+  let send: Record<string, unknown> | undefined;
+  for (const url of [`${baseUrl}&p=7`, baseUrl]) {
+    const sendXml = await flexFetch(url);
+    send = parser.parse(sendXml)?.FlexStatementResponse;
+    if (send && String(send.Status) === "Success") break;
+  }
   if (!send || String(send.Status) !== "Success") {
     throw new Error(
-      `SendRequest a échoué : ${send?.ErrorCode ?? "?"} ${send?.ErrorMessage ?? sendXml.slice(0, 200)}`
+      `SendRequest a échoué : ${send?.ErrorCode ?? "?"} ${send?.ErrorMessage ?? "réponse illisible"}`
     );
   }
   const ref = String(send.ReferenceCode);
