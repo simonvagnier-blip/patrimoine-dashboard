@@ -88,12 +88,11 @@ export interface ReturnRow {
   first_flow_date: string | null;
   invested_net_eur: number; // sum of cash_out - sum of cash_in (investor perspective), NOT counting terminal
   /**
-   * Plus-value RÉALISÉE (gains encaissés) en EUR : somme des intérêts +
-   * dividendes effectivement perçus, convertis en EUR. Indépendant de la
-   * valeur actuelle — compte les gains même s'ils ont été dépensés/sortis.
-   * Ex: intérêts du prêt textile Madagascar ramenés en espèces.
-   * NB: les plus-values de cession (`sell`) ne sont PAS encore incluses
-   * (nécessite le cost basis par lot — TODO quand un deal sortira).
+   * Plus-value RÉALISÉE (gains encaissés) en EUR :
+   *   intérêts + dividendes perçus
+   *   + plus-values de CESSION (ventes, coût moyen pondéré frais inclus).
+   * Indépendant de la valeur actuelle — compte les gains même s'ils ont été
+   * dépensés/sortis (ex: intérêts Madagascar ramenés en espèces).
    */
   realized_pnl_eur: number;
   tri_annual: number | null; // e.g. 0.084 = +8.4%/year
@@ -146,6 +145,63 @@ export async function computeReturns(): Promise<ReturnsResult> {
     }
     return round2(total);
   }
+
+  /**
+   * Plus-values de CESSION réalisées, par position — méthode du coût moyen
+   * pondéré FRAIS INCLUS (cohérente avec le PRU broker) : on rejoue le
+   * journal buy/sell chronologiquement ; à chaque vente,
+   *   gain = quantité_vendue × (produit_net_par_titre − coût_moyen).
+   * Conversion EUR au taux du jour (même approximation FX que le xirr —
+   * les taux historiques ne sont pas stockés). Les ventes non couvertes par
+   * des achats journalisés sont IGNORÉES (le flag coverage le signale déjà)
+   * plutôt que de compter tout le produit comme du gain.
+   */
+  function computeCapitalGains(): Map<number, number> {
+    const byPos = new Map<number, typeof allOps>();
+    for (const op of allOps) {
+      if (op.position_id === null) continue;
+      if (op.type !== "buy" && op.type !== "sell") continue;
+      if (typeof op.quantity !== "number" || op.quantity <= 0) continue;
+      const list = byPos.get(op.position_id) ?? [];
+      list.push(op);
+      byPos.set(op.position_id, list);
+    }
+    const gains = new Map<number, number>();
+    for (const [pid, ops] of byPos) {
+      ops.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+      let qty = 0;
+      let pool = 0; // coût total EUR des titres en portefeuille (frais inclus)
+      let realized = 0;
+      for (const op of ops) {
+        const eur = Math.abs(convertToEur(op.amount, op.currency));
+        if (op.type === "buy") {
+          pool += eur;
+          qty += op.quantity!;
+        } else {
+          if (qty <= 0) continue; // pas de coût connu → pas de gain compté
+          const q = Math.min(op.quantity!, qty);
+          const perShare = eur / op.quantity!; // produit net par titre vendu
+          const avg = pool / qty;
+          realized += q * (perShare - avg);
+          pool -= q * avg;
+          qty -= q;
+        }
+      }
+      if (Math.abs(realized) > 0.005) gains.set(pid, realized);
+    }
+    return gains;
+  }
+
+  const capitalGains = computeCapitalGains();
+  const envelopeByPosition = new Map(state.positions.map((p) => [p.id, p.envelope_id]));
+  function capitalGainsForEnvelope(envelopeId: string): number {
+    let total = 0;
+    for (const [pid, g] of capitalGains) {
+      if (envelopeByPosition.get(pid) === envelopeId) total += g;
+    }
+    return total;
+  }
+  const capitalGainsTotal = [...capitalGains.values()].reduce((s, g) => s + g, 0);
 
   // Verrou convention n°1 : le TRI/xirr se calcule sur les flux d'investissement
   // réels (buy/sell/fee) et les gains encaissés (dividend/interest) — JAMAIS sur
@@ -204,7 +260,9 @@ export async function computeReturns(): Promise<ReturnsResult> {
       cashflow_count: Math.max(0, flows.length - 1),
       first_flow_date: flows.length > 1 ? flows[0].date.toISOString().split("T")[0] : null,
       invested_net_eur: round2(netInvested(flows)),
-      realized_pnl_eur: realizedPnlFor((op) => op.position_id === p.id),
+      realized_pnl_eur: round2(
+        realizedPnlFor((op) => op.position_id === p.id) + (capitalGains.get(p.id) ?? 0)
+      ),
       tri_annual: xirr(flows),
       ...coverage,
     });
@@ -255,7 +313,9 @@ export async function computeReturns(): Promise<ReturnsResult> {
       cashflow_count: Math.max(0, flows.length - 1),
       first_flow_date: flows.length > 1 ? flows[0].date.toISOString().split("T")[0] : null,
       invested_net_eur: investedNet,
-      realized_pnl_eur: realizedPnlFor((op) => op.envelope_id === e.id),
+      realized_pnl_eur: round2(
+        realizedPnlFor((op) => op.envelope_id === e.id) + capitalGainsForEnvelope(e.id)
+      ),
       tri_annual: triAnnual,
       coverage,
       coverage_note: coverageNote,
@@ -287,7 +347,7 @@ export async function computeReturns(): Promise<ReturnsResult> {
         ? globalFlows[0].date.toISOString().split("T")[0]
         : null,
     invested_net_eur: round2(netInvested(globalFlows)),
-    realized_pnl_eur: realizedPnlFor(() => true),
+    realized_pnl_eur: round2(realizedPnlFor(() => true) + capitalGainsTotal),
     tri_annual: globalTri,
     coverage: partialEnvelopes.length === 0 ? "full" : "partial",
     coverage_note:

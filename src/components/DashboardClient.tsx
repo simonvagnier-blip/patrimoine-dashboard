@@ -327,7 +327,7 @@ function SortableEnvelopeCard({
                       </div>
                     )}
                     {hasQuotes && realizedPnl !== 0 && (
-                      <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis">
+                      <p className="text-[10px] font-[family-name:var(--font-jetbrains)] text-emerald-400/90 mt-1" title="Plus-value réalisée : intérêts, dividendes et PV de cession encaissés, même sortis">
                         <span className="text-[9px] uppercase tracking-wider text-gray-400 mr-1">Réalisée</span>
                         {hideAmounts ? "••••" : `${realizedPnl >= 0 ? "+" : ""}${formatEur(realizedPnl)}`}
                       </p>
@@ -756,7 +756,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
                   {returns && returns.global.realized_pnl_eur !== 0 && (
                     <>
                       <span className="text-gray-700">·</span>
-                      <span title="Plus-value réalisée : gains encaissés (intérêts/dividendes), même sortis du patrimoine">
+                      <span title="Plus-value réalisée : intérêts, dividendes et plus-values de cession encaissés, même sortis du patrimoine">
                         Réalisée <span className="text-emerald-400">{hideAmounts ? "••••" : `${returns.global.realized_pnl_eur >= 0 ? "+" : ""}${formatEur(returns.global.realized_pnl_eur)}`}</span>
                       </span>
                     </>
