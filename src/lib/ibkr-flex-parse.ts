@@ -160,7 +160,15 @@ export function parseFlexStatement(xml: string): FlexStatementData {
       quantity: qty,
       markPrice: num(p.markPrice),
       positionValue: num(p.positionValue),
-      costBasisMoney: num(p.costBasisMoney),
+      // IBKR expose le coût selon la config de la query : costBasisMoney
+      // (total) OU costBasisPrice (par titre) OU openPrice. On normalise en
+      // TOTAL, en ignorant les zéros (champ présent mais vide).
+      costBasisMoney: (() => {
+        const money = num(p.costBasisMoney);
+        if (money !== null && money !== 0) return money;
+        const perShare = num(p.costBasisPrice) ?? num(p.openPrice);
+        return perShare !== null && perShare !== 0 && qty !== null ? perShare * Math.abs(qty) : null;
+      })(),
       currency: String(p.currency ?? "USD"),
     });
   }
