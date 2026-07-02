@@ -1,14 +1,20 @@
 /**
- * Import CSV Fortuneo — logique PURE (parsing + catégorisation + dedup),
+ * Import CSV bancaire — logique PURE (parsing + catégorisation + dedup),
  * partagée par l'API upload in-app (C7). Portée de scripts/import-fortuneo-csv.mjs
- * (qui garde sa propre copie car il tourne en .mjs sans bundler — si tu modifies
- * les règles ici, reporte dans le script CLI).
+ * (qui garde sa propre copie car il tourne en .mjs sans bundler).
  *
- * Deux fichiers Fortuneo :
- *   - « Dépense CB » : achats CB granulaires (source de vérité)
- *   - « Relevé de compte » : virements, prélèvements, etc.
+ * Multi-banques : Fortuneo ET BRED partagent le MÊME schéma CSV (colonnes
+ * « Date de l'opération / Type / Catégorie / Sous catégorie / Montant / Détail 1… »,
+ * `;`, date JJ/MM/AAAA, montant signé virgule). Un seul parseur suffit. La
+ * catégorisation couvre les deux vocabulaires (BRED ajoute « Vie quotidienne »,
+ * « Revenus », sous-catégories, retraits DAB…).
+ *
+ * Deux fichiers par banque :
+ *   - relevé de CARTE : achats CB granulaires (source de vérité)
+ *   - relevé de COMPTE : virements, prélèvements, etc.
  * Les lignes « DEBIT MENSUEL CARTE BLEUE » apparaissent dans les deux (agrégat
- * comptable) → filtrées des deux pour ne pas double-compter.
+ * comptable, signe opposé) → filtrées des deux pour ne pas double-compter.
+ * L'ordre des deux fichiers n'importe pas (dédup symétrique).
  */
 
 export interface BudgetRow {
@@ -47,13 +53,54 @@ const VENDOR_RULES: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /\b(BREDA|BNP|SOCIETE GENERALE|LCL|CREDIT AGRICOLE|HSBC|BOURSORAMA|N26|GENERALI|AXA|MAIF|MATMUT|MACIF)\b/i, category: "Frais bancaires" },
 ];
 
-const FORTUNEO_CAT_MAP: Record<string, string> = {
+// Catégorie native simple → taxonomie de l'app (Fortuneo + BRED).
+const NATIVE_CAT_MAP: Record<string, string> = {
   Alimentation: "Alimentation", Loisirs: "Loisirs", Transport: "Transport", Santé: "Santé",
   Abonnements: "Abonnements", Shopping: "Shopping", Restaurants: "Restaurants / Sorties",
-  "Banque / Assurance": "Frais bancaires", "Banque/Assurance": "Frais bancaires",
+  Logement: "Logement",
   "Autres Dépenses": "Autre dépense", Autres: "Autre dépense", "Autres Revenus": "Autre revenu",
   Salaires: "Salaire", Impôts: "Impôts / Taxes", "Impôts et taxes": "Impôts / Taxes",
 };
+
+/**
+ * Résout la catégorie native BRED/Fortuneo en tenant compte de la
+ * sous-catégorie et du type d'opération (BRED range beaucoup de choses
+ * hétérogènes sous « Banque / Assurance » : cotisations = frais, mais aussi
+ * retraits DAB, virements, TapTap Send → à ne PAS compter comme frais).
+ */
+function resolveNativeCategory(
+  cat: string,
+  sous: string,
+  opType: string,
+  label: string
+): string | null {
+  const c = cat.trim();
+  const s = sous.toUpperCase();
+  const op = opType.toUpperCase();
+
+  if (NATIVE_CAT_MAP[c]) {
+    // Affinage par sous-catégorie
+    if (c === "Alimentation" && /RESTAURANT/.test(s)) return "Restaurants / Sorties";
+    return NATIVE_CAT_MAP[c];
+  }
+  if (c === "Vie quotidienne") {
+    if (/T[EÉ]L[EÉ]COM/.test(s)) return "Abonnements";
+    if (/HABILLEMENT/.test(s)) return "Shopping";
+    return "Autre dépense";
+  }
+  if (c === "Revenus") {
+    return /SALAIRE/.test(label.toUpperCase()) ? "Salaire" : "Autre revenu";
+  }
+  if (c === "Banque / Assurance" || c === "Banque/Assurance") {
+    if (/ASSURANCE|MUTUELLE/.test(s)) return "Assurances";
+    if (/COTISATION|ADHESION/.test(op)) return "Frais bancaires";
+    if (/FRAIS/.test(op)) return "Frais bancaires";
+    if (/RETRAIT|ESPECE/.test(op)) return "Autre dépense"; // cash retiré
+    if (/TRANSFERT|VIREMENT/.test(op)) return "Transfert interne"; // TapTap, virements sortants
+    return "Frais bancaires";
+  }
+  return null;
+}
 
 function parseCsv(raw: string): Record<string, string>[] {
   const text = raw.replace(/^﻿/, "");
@@ -100,28 +147,55 @@ function applyUserRules(label: string, rules: UserRule[]): string | null {
 
 function categorize(row: Record<string, string>, userRules: UserRule[]): string {
   const d1 = (row["Détail 1"] || "").toUpperCase();
+  // BRED met le BIC (FTNO… = Fortuneo) et d'autres indices dans Détail 4/5.
+  const details = [row["Détail 1"], row["Détail 4"], row["Détail 5"]]
+    .map((x) => (x || "").toUpperCase())
+    .join(" ");
   const opType = (row["Type de l'opération"] || "").toUpperCase();
-  const fc = row["Catégorie"]?.trim() || "";
+  const cat = row["Catégorie"]?.trim() || "";
+  const sous = row["Sous catégorie"]?.trim() || "";
   const amt = parseAmountFr(row["Montant"] || "0");
+  const label = buildLabel(row);
 
-  const userMatch = applyUserRules(buildLabel(row), userRules);
+  // 0. Règle utilisateur (label_rules) — priorité absolue.
+  const userMatch = applyUserRules(label, userRules);
   if (userMatch) return userMatch;
 
+  // 1. Self-transfers (virements vers ses propres comptes)
   const userTokens = USER_NAME.split(/\s+/);
   const hasAllTokens = userTokens.every((t) => d1.includes(t));
   if (/SIMON\s+(REVOLUT|N26|LYDIA)/.test(d1)) return "Transfert interne";
-  if (hasAllTokens && !d1.includes("FORTUNEO")) return "Transfert interne";
-  if (hasAllTokens && d1.includes("FORTUNEO")) return "Investissement PEA";
+  // Virement à soi-même vers Fortuneo (BIC FTNO ou libellé) = alimentation invest
+  if (hasAllTokens && /FORTUNEO|FTNO/.test(details)) return "Investissement PEA";
+  if (hasAllTokens) return "Transfert interne";
+
+  // 2. Plateformes d'investissement (alimentation CTO/PEA — flux interne)
   if (/\bFORTUNEO\s*(BOURSE|PEA|PER|SA)\b/.test(d1)) return "Investissement PEA";
+  if (/INTERACTIVE BROKERS|\bIBKR\b/.test(d1)) return "Transfert interne";
 
+  // 3. Règles vendeurs (priorité sur la catégorie native)
   for (const rule of VENDOR_RULES) if (rule.pattern.test(d1)) return rule.category;
-  if (fc && fc !== "A catégoriser") return FORTUNEO_CAT_MAP[fc] || fc;
 
+  // 4. Catégorie native (BRED/Fortuneo) + sous-catégorie
+  if (cat && cat !== "A catégoriser") {
+    // Salaire : le mot « SALAIRE » est souvent dans Détail 2 (pas le libellé).
+    const salaryText = `${row["Détail 1"] ?? ""} ${row["Détail 2"] ?? ""}`.toUpperCase();
+    if (
+      (cat === "Revenus" || cat === "Autres Revenus" || cat === "Salaires") &&
+      /\bSALAIRE\b|LIVE DATA SOLUTIONS/.test(salaryText)
+    ) {
+      return "Salaire";
+    }
+    const resolved = resolveNativeCategory(cat, sous, opType, label);
+    if (resolved) return resolved;
+  }
+
+  // 5. Repli sur le type d'opération
   if (/VIREMENT.*RECU/.test(opType)) return "Autre revenu";
   if (/VIREMENT.*EMIS|PRELEVEMENT/.test(opType)) return "Autre dépense";
   if (/COTISATION/.test(opType)) return "Frais bancaires";
+  if (/RETRAIT|ESPECE/.test(opType)) return "Autre dépense";
   if (/CARTE/.test(opType)) return "Autre dépense";
-  if (/ESPECE/.test(opType)) return "Autre dépense";
   if (/CHEQUE/.test(opType)) return amt > 0 ? "Autre revenu" : "Autre dépense";
   if (/INTERETS/.test(opType)) return "Intérêts / Dividendes";
   if (/ADHESION/.test(opType)) return "Frais bancaires";
@@ -157,8 +231,9 @@ export interface ParsedImport {
   by_year: Record<string, { n: number; inc: number; exp: number }>;
 }
 
-/** Parse et catégorise les deux CSV (l'un ou l'autre peut être vide). Pur. */
-export function parseFortuneoCsvs(cbCsv: string, releveCsv: string, userRules: UserRule[] = []): ParsedImport {
+/** Parse et catégorise les deux CSV (l'un ou l'autre peut être vide). Pur.
+ *  Fonctionne pour Fortuneo ET BRED (schéma identique). */
+export function parseBankCsvs(cbCsv: string, releveCsv: string, userRules: UserRule[] = []): ParsedImport {
   const cbAll = parseCsv(cbCsv).map((r) => normalize(r, "cb", userRules)).filter((r): r is BudgetRow => !!r);
   const releveAll = parseCsv(releveCsv).map((r) => normalize(r, "releve", userRules)).filter((r): r is BudgetRow => !!r);
   const cb = cbAll.filter((r) => !DUP_TYPES.has(r.opType));
