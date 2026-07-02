@@ -31,6 +31,7 @@ interface Status {
     error?: string;
     imported?: { buys: number; sells: number; dividends: number; fees: number; interest: number };
     skipped_existing?: number;
+    adopted?: number;
     positions_created?: string[];
     warnings?: string[];
   } | null;
@@ -118,6 +119,7 @@ export default function IbkrPanel() {
           <p className="text-xs text-gray-400 font-[family-name:var(--font-jetbrains)]">
             Importés : {imp.buys} achats · {imp.sells} ventes · {imp.dividends} dividendes · {imp.fees} frais · {imp.interest} intérêts
             {typeof ls?.skipped_existing === "number" && ls.skipped_existing > 0 && ` · ${ls.skipped_existing} déjà connus`}
+            {typeof ls?.adopted === "number" && ls.adopted > 0 && ` · ${ls.adopted} saisies manuelles reliées`}
           </p>
         )}
         {(ls?.warnings ?? []).length > 0 && (

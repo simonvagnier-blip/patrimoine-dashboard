@@ -18,6 +18,9 @@ export interface SyncReport {
   imported: { buys: number; sells: number; dividends: number; fees: number; interest: number };
   skipped_existing: number;
   skipped_deposits: number;
+  /** Saisies manuelles identiques reliées à leur tradeID IBKR (pas de doublon,
+   *  pas de retouche de position — elle reflète déjà l'opération). */
+  adopted: number;
   positions_created: string[];
   warnings: string[];
   error?: string;
@@ -56,6 +59,7 @@ export async function runIbkrSync(): Promise<SyncReport> {
     imported: { buys: 0, sells: 0, dividends: 0, fees: 0, interest: 0 },
     skipped_existing: 0,
     skipped_deposits: 0,
+    adopted: 0,
     positions_created: [],
     warnings: [],
   };
@@ -102,6 +106,41 @@ export async function runIbkrSync(): Promise<SyncReport> {
         continue;
       }
       let pos = bySymbol(t.symbol);
+
+      // ADOPTION : si Simon a déjà saisi ce trade à la main (même position,
+      // date, type, quantité, montant à ±0,05 près), on relie l'op manuelle
+      // au tradeID IBKR au lieu de créer un doublon. La position reflète déjà
+      // ce trade → on ne touche NI quantité NI PRU. Critique pour la première
+      // synchro (l'historique manuel recouvre la fenêtre de 7 jours).
+      if (pos) {
+        const sameDay = await db
+          .select()
+          .from(schema.operations)
+          .where(
+            and(
+              eq(schema.operations.envelope_id, envelopeId),
+              eq(schema.operations.position_id, pos.id),
+              eq(schema.operations.date, op.date),
+              eq(schema.operations.type, op.type),
+            ),
+          )
+          .all();
+        const manual = sameDay.find(
+          (m) =>
+            m.external_id === null &&
+            Math.abs(m.amount - op.amount) < 0.05 &&
+            Math.abs((m.quantity ?? 0) - (op.quantity ?? 0)) < 1e-6,
+        );
+        if (manual) {
+          await db
+            .update(schema.operations)
+            .set({ external_id: op.external_id, updated_at: new Date().toISOString() })
+            .where(eq(schema.operations.id, manual.id))
+            .run();
+          report.adopted++;
+          continue;
+        }
+      }
       if (!pos) {
         const created = await db
           .insert(schema.positions)
