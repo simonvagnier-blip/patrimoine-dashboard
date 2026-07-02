@@ -241,3 +241,11 @@ Les specs détaillées du patrimoine sont dans `SPECS.md` à la racine du repo p
 
 ### Backup DB
 `node scripts/backup-db.mjs` → dump SQL complet dans `../backups/` (hors repo, testé restaurable).
+
+### Frais, change & import CSV in-app (C7)
+- `lib/fees.ts` + `/api/fees` + `FeesPanel` (dashboard) : frais de gestion (ops `fee`) + commissions incluses dans buy/sell (commission = |amount|−|qty×prix| pour buy, inverse pour sell), par enveloppe et par an, converti EUR via `lastKnownQuotes`.
+- `CurrencyExposurePanel` (dashboard) : répartition EUR/USD/MGA + sensibilité ±5 % (calcul exact depuis les valeurs converties, pas d'historique FX). **Décomposition backward capital/dividendes/change NON faite** : nécessite le FX historique par lot d'achat → limite de données assumée (ne pas fabriquer un chiffre faux).
+- `lib/fortuneo-import.ts` (pur, testé) + `/api/budget/import` (mode preview/insert/wipe) + `BudgetImportPanel` (page budget) : import in-app des 2 CSV Fortuneo. Applique `label_rules` (priorité 0) + règles vendeurs + dedup DEBIT MENSUEL. **Le CLI `scripts/import-fortuneo-csv.mjs` garde sa copie des règles** (tourne en .mjs sans bundler) — garder les deux alignés.
+
+## Roadmap C0→C7 : TERMINÉE (02/07/2026)
+Reste optionnel : import CSV du compte-titres PEA/CTO Fortuneo (≠ budget) vers le journal d'opérations — non fait, demanderait un vrai échantillon CSV titres.
