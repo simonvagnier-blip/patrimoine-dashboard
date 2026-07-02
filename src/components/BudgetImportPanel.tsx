@@ -67,7 +67,7 @@ export default function BudgetImportPanel({ onImported }: { onImported?: () => v
         >
           <div>
             <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Import</p>
-            <CardTitle className="text-sm text-gray-200 font-medium">Importer des relevés Fortuneo (CSV)</CardTitle>
+            <CardTitle className="text-sm text-gray-200 font-medium">Importer des relevés bancaires (CSV — BRED, Fortuneo)</CardTitle>
           </div>
           <span className={`text-gray-500 transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
         </button>
@@ -75,12 +75,13 @@ export default function BudgetImportPanel({ onImported }: { onImported?: () => v
       {open && (
         <CardContent className="space-y-3">
           <p className="text-xs text-gray-500 leading-relaxed">
-            Fortuneo → Compte → Historique → Télécharger. Dépose « Dépense CB » et/ou « Relevé de compte ».
-            La catégorisation (règles + vendeurs + tes règles persistées) est appliquée automatiquement.
+            BRED ou Fortuneo → Historique des opérations → Télécharger en CSV. Dépose le relevé de carte
+            et/ou le relevé de compte (l'ordre n'importe pas). Catégorisation, dédoublonnage du débit
+            mensuel CB et tes règles persistées appliqués automatiquement.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5 text-xs text-gray-400">
-              Dépense CB
+              Relevé de carte / CB
               <input
                 type="file" accept=".csv,text/csv"
                 onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0], "cb")}

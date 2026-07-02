@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db";
-import { parseFortuneoCsvs, type UserRule } from "@/lib/fortuneo-import";
+import { parseBankCsvs, type UserRule } from "@/lib/bank-csv-import";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     // table absente → on continue sans règles perso
   }
 
-  const parsed = parseFortuneoCsvs(cbCsv, releveCsv, userRules);
+  const parsed = parseBankCsvs(cbCsv, releveCsv, userRules);
 
   const summary = {
     parsed: parsed.rows.length,
