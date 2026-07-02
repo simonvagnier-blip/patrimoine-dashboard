@@ -101,15 +101,9 @@ export default function BudgetPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Défaut du filtre date : début du mois de la transaction LA PLUS RÉCENTE.
-  // (Avant : 1er du mois courant → "Aucune transaction" à l'ouverture si le mois
-  //  en cours n'a pas encore d'opérations importées, alors que 2882 existent.)
-  useEffect(() => {
-    if (!dateFrom && !dateTo && entries.length > 0) {
-      const maxDate = entries.reduce((mx, e) => (e.date > mx ? e.date : mx), entries[0].date);
-      setDateFrom(maxDate.slice(0, 7) + "-01");
-    }
-  }, [entries.length, dateFrom, dateTo]);
+  // Pas de filtre de date par défaut : la page ouvre sur TOUT l'historique
+  // (vue d'ensemble immédiate). L'utilisateur restreint via les champs de date
+  // ou le raccourci « Cette année » ci-dessous.
 
   // Liste filtrée (client-side, on a tout en mémoire)
   const filtered = useMemo(() => {
@@ -295,6 +289,35 @@ export default function BudgetPage() {
                 <Label className="text-gray-500 text-[11px] uppercase tracking-wider">Au</Label>
                 <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
                   className={`${inputCls} w-40 text-sm`} />
+              </div>
+              {/* Raccourcis de période — « Tout » est le défaut à l'ouverture */}
+              <div className="flex gap-1 flex-wrap items-center pb-0.5">
+                {([
+                  { key: "all", label: "Tout" },
+                  { key: "ytd", label: "Cette année" },
+                  { key: "12m", label: "12 mois" },
+                  { key: "month", label: "Ce mois" },
+                ] as const).map((p) => {
+                  const now = new Date();
+                  const iso = (d: Date) => d.toISOString().slice(0, 10);
+                  const ranges: Record<string, [string, string]> = {
+                    all: ["", ""],
+                    ytd: [`${now.getFullYear()}-01-01`, ""],
+                    "12m": [iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())), ""],
+                    month: [iso(new Date(now.getFullYear(), now.getMonth(), 1)), ""],
+                  };
+                  const [from] = ranges[p.key];
+                  const active = dateFrom === from && !dateTo;
+                  return (
+                    <button key={p.key}
+                      onClick={() => { setDateFrom(ranges[p.key][0]); setDateTo(ranges[p.key][1]); setPage(0); }}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        active ? "bg-[#161b22] text-emerald-400 border-gray-600" : "bg-transparent text-gray-500 border-gray-800 hover:border-gray-700"
+                      }`}>
+                      {p.label}
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex gap-1 flex-wrap items-center pb-0.5">
                 {(["expense", "income", "invest", "transfer"] as Bucket[]).map((b) => (
