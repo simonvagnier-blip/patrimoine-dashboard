@@ -1,16 +1,23 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  computeCurrencyExposure,
+  CURRENCY_LABELS,
+  type ExposureInput,
+} from "@/lib/currency-exposure";
 
 interface Pos {
   currency: string;
+  scenarioKey: string;
   value: number; // EUR
 }
 
-const CUR_META: Record<string, { label: string; color: string }> = {
-  EUR: { label: "Euro", color: "#34d399" },
-  USD: { label: "Dollar US", color: "#38bdf8" },
-  MGA: { label: "Ariary (MGA)", color: "#d97706" },
+// Couleurs par devise (USD bleu = accent CTO, EUR vert, MGA ambre, reste variés)
+const CUR_COLOR: Record<string, string> = {
+  EUR: "#34d399", USD: "#38bdf8", MGA: "#d97706", JPY: "#f472b6", GBP: "#a78bfa",
+  CHF: "#f59e0b", CAD: "#fb923c", CNY: "#ef4444", TWD: "#22d3ee", INR: "#a3e635",
+  KRW: "#e879f9", BRL: "#facc15", Autres: "#6b7280",
 };
 
 function eur(v: number): string {
@@ -18,11 +25,9 @@ function eur(v: number): string {
 }
 
 /**
- * Exposition par devise (C7) — quelle part du patrimoine est libellée en EUR,
- * USD, MGA ? Répond à « combien de ma perf dépend du change ? » pour un
- * portefeuille EUR avec un gros bloc USD. Sensibilité = impact d'un mouvement
- * de ±5 % de la devise étrangère sur la valeur en EUR (calcul exact, pas
- * d'historique requis).
+ * Exposition devise ÉCONOMIQUE (transparisation) — regarde à travers les ETF
+ * vers les devises de leurs sous-jacents (un S&P 500 en PEA = risque USD).
+ * Répond honnêtement à « combien de ma perf dépend du change ? ».
  */
 export default function CurrencyExposurePanel({
   positions,
@@ -31,61 +36,57 @@ export default function CurrencyExposurePanel({
   positions: Pos[];
   hideAmounts?: boolean;
 }) {
-  const byCur = new Map<string, number>();
-  for (const p of positions) {
-    if (p.value <= 0) continue;
-    byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.value);
-  }
-  const total = [...byCur.values()].reduce((s, v) => s + v, 0);
-  if (total <= 0 || byCur.size < 2) return null; // rien à montrer si mono-devise
+  const input: ExposureInput[] = positions.map((p) => ({
+    currency: p.currency,
+    scenarioKey: p.scenarioKey,
+    valueEur: p.value,
+  }));
+  const { byCurrency, total, foreignEur } = computeCurrencyExposure(input);
+  if (total <= 0 || byCurrency.length < 2) return null;
 
-  const rows = [...byCur.entries()]
-    .map(([cur, value]) => ({
-      cur,
-      value,
-      pct: (value / total) * 100,
-      meta: CUR_META[cur] ?? { label: cur, color: "#6b7280" },
-    }))
-    .sort((a, b) => b.value - a.value);
-
-  const foreign = rows.filter((r) => r.cur !== "EUR").reduce((s, r) => s + r.value, 0);
   const m = (s: string) => (hideAmounts ? "•••" : s);
+  const color = (c: string) => CUR_COLOR[c] ?? "#6b7280";
+  const label = (c: string) => CURRENCY_LABELS[c] ?? c;
 
   return (
     <Card className="bg-[#11161f] border-gray-800">
       <CardHeader className="pb-2">
         <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Change</p>
-        <CardTitle className="text-sm text-gray-200 font-medium">Exposition par devise</CardTitle>
+        <CardTitle className="text-sm text-gray-200 font-medium">Exposition devise réelle (transparisée)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Barre empilée */}
         <div className="flex h-3 rounded-full overflow-hidden">
-          {rows.map((r) => (
+          {byCurrency.map((r) => (
             <div
-              key={r.cur}
-              style={{ width: `${r.pct}%`, backgroundColor: r.meta.color }}
-              title={`${r.meta.label} : ${r.pct.toFixed(1)} %`}
+              key={r.currency}
+              style={{ width: `${r.pct}%`, backgroundColor: color(r.currency) }}
+              title={`${label(r.currency)} : ${r.pct.toFixed(1)} %`}
             />
           ))}
         </div>
         <div className="space-y-1.5">
-          {rows.map((r) => (
-            <div key={r.cur} className="flex items-center gap-2 text-sm">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.meta.color }} />
-              <span className="text-gray-300 flex-1">{r.meta.label}</span>
-              <span className="text-gray-400 font-[family-name:var(--font-jetbrains)] tabular-nums">{m(eur(r.value))}</span>
+          {byCurrency.map((r) => (
+            <div key={r.currency} className="flex items-center gap-2 text-sm">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color(r.currency) }} />
+              <span className="text-gray-300 flex-1">{label(r.currency)}</span>
+              <span className="text-gray-400 font-[family-name:var(--font-jetbrains)] tabular-nums">{m(eur(r.valueEur))}</span>
               <span className="text-gray-500 font-[family-name:var(--font-jetbrains)] tabular-nums w-14 text-right">{r.pct.toFixed(1)} %</span>
             </div>
           ))}
         </div>
-        {foreign > 0 && (
+        {foreignEur > 0 && (
           <p className="text-[11px] text-gray-500 leading-relaxed border-t border-gray-800 pt-2">
-            {((foreign / total) * 100).toFixed(0)} % de ton patrimoine est en devise étrangère.
-            Un mouvement de <span className="text-gray-400">±5 %</span> de ces devises vaut{" "}
-            <span className="text-gray-300 font-[family-name:var(--font-jetbrains)]">{m(eur(foreign * 0.05))}</span>{" "}
-            sur ta valeur en euros — indépendamment de la performance des actifs.
+            {((foreignEur / total) * 100).toFixed(0)} % de ton patrimoine est exposé à une devise étrangère
+            (sous-jacents des ETF inclus). Un mouvement de <span className="text-gray-400">±5 %</span> de ces
+            devises vaut ≈ <span className="text-gray-300 font-[family-name:var(--font-jetbrains)]">{m(eur(foreignEur * 0.05))}</span>{" "}
+            sur ta valeur en euros.
           </p>
         )}
+        <p className="text-[10px] text-gray-600 leading-relaxed">
+          Estimation par transparisation : les ETF cotés en euros (S&amp;P 500, Nasdaq, World, émergents) sont
+          décomposés vers les devises de leurs sous-jacents selon les compositions indicielles standard.
+        </p>
       </CardContent>
     </Card>
   );

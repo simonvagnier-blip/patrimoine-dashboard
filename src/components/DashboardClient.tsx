@@ -930,7 +930,7 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             <FeesPanel hideAmounts={hideAmounts} />
             <CurrencyExposurePanel
-              positions={enrichedPositions.map((p) => ({ currency: p.currency, value: p.current_value }))}
+              positions={enrichedPositions.map((p) => ({ currency: p.currency, scenarioKey: p.scenario_key, value: p.current_value }))}
               hideAmounts={hideAmounts}
             />
           </div>
