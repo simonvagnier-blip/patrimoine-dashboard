@@ -17,6 +17,8 @@ import { manualValueToEur } from "@/lib/currency";
 import { TriBadge } from "./TriBadge";
 import Sparkline from "./Sparkline";
 import NotificationsButton from "./NotificationsButton";
+import FeesPanel from "./FeesPanel";
+import CurrencyExposurePanel from "./CurrencyExposurePanel";
 import FillTargetWidget from "./FillTargetWidget";
 import AlertsBanner from "./AlertsBanner";
 import StatsBar from "./StatsBar";
@@ -922,6 +924,17 @@ export default function DashboardClient({ envelopes: initialEnvelopes, positions
             </SortableContext>
           </DndContext>
         </div>
+
+        {/* C7 — coûts & change côte à côte sur desktop */}
+        {hasQuotes && !noPositions && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <FeesPanel hideAmounts={hideAmounts} />
+            <CurrencyExposurePanel
+              positions={enrichedPositions.map((p) => ({ currency: p.currency, value: p.current_value }))}
+              hideAmounts={hideAmounts}
+            />
+          </div>
+        )}
 
         {/* Répartition + détail des positions.
             Mobile : empilés (ordre inchangé). Desktop : côte à côte — donut 1/3,
