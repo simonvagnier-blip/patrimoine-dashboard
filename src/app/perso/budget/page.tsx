@@ -290,21 +290,26 @@ export default function BudgetPage() {
                 <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
                   className={`${inputCls} w-40 text-sm`} />
               </div>
-              {/* Raccourcis de période — « Tout » est le défaut à l'ouverture */}
+              {/* Raccourcis de période — fenêtres glissantes ; « Tout » par défaut */}
               <div className="flex gap-1 flex-wrap items-center pb-0.5">
                 {([
                   { key: "all", label: "Tout" },
+                  { key: "1m", label: "1 mois" },
+                  { key: "3m", label: "3 mois" },
+                  { key: "6m", label: "6 mois" },
+                  { key: "1y", label: "1 an" },
                   { key: "ytd", label: "Cette année" },
-                  { key: "12m", label: "12 mois" },
-                  { key: "month", label: "Ce mois" },
                 ] as const).map((p) => {
                   const now = new Date();
                   const iso = (d: Date) => d.toISOString().slice(0, 10);
+                  const monthsAgo = (n: number) => { const d = new Date(now); d.setMonth(d.getMonth() - n); return iso(d); };
                   const ranges: Record<string, [string, string]> = {
                     all: ["", ""],
+                    "1m": [monthsAgo(1), ""],
+                    "3m": [monthsAgo(3), ""],
+                    "6m": [monthsAgo(6), ""],
+                    "1y": [monthsAgo(12), ""],
                     ytd: [`${now.getFullYear()}-01-01`, ""],
-                    "12m": [iso(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())), ""],
-                    month: [iso(new Date(now.getFullYear(), now.getMonth(), 1)), ""],
                   };
                   const [from] = ranges[p.key];
                   const active = dateFrom === from && !dateTo;
