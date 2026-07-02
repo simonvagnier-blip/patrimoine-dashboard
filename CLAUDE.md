@@ -72,7 +72,7 @@ pct = perf_eur / value_then × 100
 - Source de l'historique des valeurs par enveloppe : `snapshots.details_json` (JSON `{envelope_id: value_eur}`)
 
 ### Plus-value réalisée (PV réalisée)
-- `lib/returns.ts` : `realized_pnl_eur` par scope (global/enveloppe/position) = somme des ops `interest` + `dividend` encaissées, converties en EUR (`convertToEur` gère EUR/USD/MGA). Convention : `interest`/`dividend` stockés en **négatif** = argent revenu à l'investisseur, donc gain = `-amount`.
+- `lib/returns.ts` : `realized_pnl_eur` par scope (global/enveloppe/position) = ops `interest` + `dividend` encaissées **+ plus-values de CESSION** (rejeu chronologique buy/sell, coût moyen pondéré frais inclus — C8, 02/07/2026 ; ventes non couvertes par des achats journalisés ignorées). Conversion EUR au taux du jour. Convention : `interest`/`dividend` stockés en **négatif** = argent revenu à l'investisseur, donc gain = `-amount`.
 - Indépendant de la valeur actuelle : compte les gains encaissés **même dépensés** (ex: intérêts Madagascar ramenés en espèces et dépensés → op `interest` enregistrée, CASH-MGA **non** crédité).
 - Affiché : header global (`DashboardClient`), cartes d'enveloppe (si ≠ 0), page détail enveloppe.
 - Garde-fou TRI global : si `|tri_annual| > 1.0` (100%/an) au scope **global**, on le neutralise (`null` → badge "TRI n/c") car c'est un artefact xirr (journal d'ops incomplet). Les TRI **enveloppe** ne sont pas plafonnés (un deal business peut faire 10%/mois).
