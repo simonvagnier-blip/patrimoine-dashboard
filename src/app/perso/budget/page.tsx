@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import BudgetTrendPanel from "@/components/BudgetTrendPanel";
+import BudgetImportPanel from "@/components/BudgetImportPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { CATEGORIES } from "@/lib/budget-rules";
 
@@ -278,6 +279,8 @@ export default function BudgetPage() {
         </div>
 
         <BudgetTrendPanel refreshKey={trendKey} />
+
+        <BudgetImportPanel onImported={() => { fetchAll(); setTrendKey((k) => k + 1); }} />
 
         {/* Barre de filtres */}
         <Card className="bg-[#0d1117] border-gray-800">
